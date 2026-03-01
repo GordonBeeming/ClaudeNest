@@ -1,0 +1,13 @@
+/Users/gordonbeeming/Developer/github/0x5ide/ClaudeNest/src/ClaudeNest.ServiceDefaults/bin/Debug/net10.0/ClaudeNest.ServiceDefaults.deps.json
+/Users/gordonbeeming/Developer/github/0x5ide/ClaudeNest/src/ClaudeNest.ServiceDefaults/bin/Debug/net10.0/ClaudeNest.ServiceDefaults.dll
+/Users/gordonbeeming/Developer/github/0x5ide/ClaudeNest/src/ClaudeNest.ServiceDefaults/bin/Debug/net10.0/ClaudeNest.ServiceDefaults.pdb
+/Users/gordonbeeming/Developer/github/0x5ide/ClaudeNest/src/ClaudeNest.ServiceDefaults/obj/Debug/net10.0/ClaudeNest.ServiceDefaults.csproj.AssemblyReference.cache
+/Users/gordonbeeming/Developer/github/0x5ide/ClaudeNest/src/ClaudeNest.ServiceDefaults/obj/Debug/net10.0/ClaudeNest.ServiceDefaults.GeneratedMSBuildEditorConfig.editorconfig
+/Users/gordonbeeming/Developer/github/0x5ide/ClaudeNest/src/ClaudeNest.ServiceDefaults/obj/Debug/net10.0/ClaudeNest.ServiceDefaults.AssemblyInfoInputs.cache
+/Users/gordonbeeming/Developer/github/0x5ide/ClaudeNest/src/ClaudeNest.ServiceDefaults/obj/Debug/net10.0/ClaudeNest.ServiceDefaults.AssemblyInfo.cs
+/Users/gordonbeeming/Developer/github/0x5ide/ClaudeNest/src/ClaudeNest.ServiceDefaults/obj/Debug/net10.0/ClaudeNest.ServiceDefaults.csproj.CoreCompileInputs.cache
+/Users/gordonbeeming/Developer/github/0x5ide/ClaudeNest/src/ClaudeNest.ServiceDefaults/obj/Debug/net10.0/ClaudeNest.ServiceDefaults.sourcelink.json
+/Users/gordonbeeming/Developer/github/0x5ide/ClaudeNest/src/ClaudeNest.ServiceDefaults/obj/Debug/net10.0/ClaudeNest.ServiceDefaults.dll
+/Users/gordonbeeming/Developer/github/0x5ide/ClaudeNest/src/ClaudeNest.ServiceDefaults/obj/Debug/net10.0/refint/ClaudeNest.ServiceDefaults.dll
+/Users/gordonbeeming/Developer/github/0x5ide/ClaudeNest/src/ClaudeNest.ServiceDefaults/obj/Debug/net10.0/ClaudeNest.ServiceDefaults.pdb
+/Users/gordonbeeming/Developer/github/0x5ide/ClaudeNest/src/ClaudeNest.ServiceDefaults/obj/Debug/net10.0/ref/ClaudeNest.ServiceDefaults.dll
