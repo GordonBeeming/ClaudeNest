@@ -255,6 +255,12 @@ public class NestHub(NestDbContext db) : Hub
     // In-memory mappings (will move to a proper service later for multi-instance support)
     private static readonly AgentConnectionMap AgentConnectionMap = new();
     private static readonly PendingRequestMap PendingRequests = new();
+
+    /// <summary>
+    /// Allows controllers to check if an agent is connected and get its connection ID.
+    /// </summary>
+    public static bool TryGetAgentConnectionId(Guid agentId, out string connectionId)
+        => AgentConnectionMap.TryGetConnectionId(agentId, out connectionId);
 }
 
 internal sealed class AgentConnectionMap

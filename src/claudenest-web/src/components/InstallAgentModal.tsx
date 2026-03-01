@@ -89,7 +89,7 @@ function installCommand(filename: string, token: string, backendUrl: string, opt
   const pathArg = options?.devWorkspacePath ? ` --path "${options.devWorkspacePath}"` : "";
   const run = `./${filename} install --token ${token} --backend ${backendUrl}${pathArg}`;
   if (isWindows) return run;
-  const quarantine = options?.localBuild && isMac ? `xattr -d com.apple.quarantine ./${filename} && ` : "";
+  const quarantine = options?.localBuild && isMac ? `xattr -d com.apple.quarantine ./${filename} 2>/dev/null; ` : "";
   return `${quarantine}chmod +x ./${filename} && ${run}`;
 }
 

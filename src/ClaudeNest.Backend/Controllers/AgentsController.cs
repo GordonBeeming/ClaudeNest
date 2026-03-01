@@ -3,8 +3,11 @@ using System.Text;
 using System.Text.Json;
 using ClaudeNest.Backend.Data;
 using ClaudeNest.Backend.Data.Entities;
+using ClaudeNest.Backend.Hubs;
+using ClaudeNest.Shared.Messages;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClaudeNest.Backend.Controllers;
@@ -12,7 +15,7 @@ namespace ClaudeNest.Backend.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class AgentsController(NestDbContext db) : ControllerBase
+public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAgents()
@@ -169,6 +172,48 @@ public class AgentsController(NestDbContext db) : ControllerBase
             credentialId = newCredential.Id,
             secret
         });
+    }
+
+    [HttpDelete("{agentId:guid}")]
+    public async Task<IActionResult> DeleteAgent(Guid agentId)
+    {
+        var auth0UserId = User.FindFirst("sub")?.Value;
+        if (auth0UserId is null) return Unauthorized();
+
+        var agent = await db.Agents
+            .Include(a => a.Credentials)
+            .Include(a => a.Sessions)
+            .Where(a => a.Id == agentId && a.Account.Users.Any(u => u.Auth0UserId == auth0UserId))
+            .FirstOrDefaultAsync();
+
+        if (agent is null) return NotFound();
+
+        // If agent is online, send a best-effort Deregister command
+        if (NestHub.TryGetAgentConnectionId(agentId, out var connectionId))
+        {
+            try
+            {
+                await hubContext.Clients.Client(connectionId)
+                    .SendAsync("Deregister", new DeregisterCommand
+                    {
+                        AgentId = agentId,
+                        Reason = "Agent removed by user"
+                    });
+            }
+            catch
+            {
+                // Best-effort — agent may have disconnected between the check and the send
+            }
+        }
+
+        db.Agents.Remove(agent);
+        await db.SaveChangesAsync();
+
+        // Notify web clients watching this agent
+        await hubContext.Clients.Group($"user:{agentId}")
+            .SendAsync("AgentRemoved", agentId);
+
+        return NoContent();
     }
 
     [HttpDelete("{agentId:guid}/credentials/{credentialId:guid}")]

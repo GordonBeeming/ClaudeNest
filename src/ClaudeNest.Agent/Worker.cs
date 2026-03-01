@@ -91,6 +91,15 @@ public class AgentWorker(
             await _connectionManager.ReportAllSessionsAsync(credentials.AgentId, sessions);
         };
 
+        _connectionManager.OnDeregister += () =>
+        {
+            logger.LogWarning("Received deregister command from backend. Stopping sessions and removing credentials.");
+            _sessionManager.StopAllSessions();
+            ConfigLoader.DeleteCredentials();
+            lifetime.StopApplication();
+            return Task.CompletedTask;
+        };
+
         // Connect to the backend
         try
         {

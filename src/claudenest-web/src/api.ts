@@ -87,6 +87,12 @@ export async function rotateAgentSecret(agentId: string): Promise<{ credentialId
   });
 }
 
+export async function deleteAgent(agentId: string): Promise<void> {
+  return apiFetch<void>(`/agents/${agentId}`, {
+    method: "DELETE",
+  });
+}
+
 export async function revokeAgentCredential(agentId: string, credentialId: string): Promise<void> {
   return apiFetch<void>(`/agents/${agentId}/credentials/${credentialId}`, {
     method: "DELETE",

@@ -91,6 +91,17 @@ public sealed class SessionManager(
         return _sessions.Values.Select(ToStatusUpdate).ToList();
     }
 
+    public void StopAllSessions()
+    {
+        foreach (var (id, session) in _sessions)
+        {
+            if (session.State is SessionState.Starting or SessionState.Running)
+            {
+                TryStopSession(id);
+            }
+        }
+    }
+
     public void HealthCheck()
     {
         foreach (var session in _sessions.Values)

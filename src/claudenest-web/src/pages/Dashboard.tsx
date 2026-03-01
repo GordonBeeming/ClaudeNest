@@ -12,7 +12,7 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPairing, setShowPairing] = useState(false);
-  const { onAgentStatusChanged } = useSignalRContext();
+  const { onAgentStatusChanged, onAgentRemoved } = useSignalRContext();
   const { user } = useUserContext();
   const maxAgents = user?.account?.maxAgents ?? 0;
   const planName = user?.account?.planName ?? "";
@@ -42,6 +42,13 @@ export function Dashboard() {
       );
     });
   }, [onAgentStatusChanged]);
+
+  // Listen for agent removal (handles multi-tab scenario)
+  useEffect(() => {
+    return onAgentRemoved((agentId) => {
+      setAgents((prev) => prev.filter((a) => a.id !== agentId));
+    });
+  }, [onAgentRemoved]);
 
   if (loading) {
     return (

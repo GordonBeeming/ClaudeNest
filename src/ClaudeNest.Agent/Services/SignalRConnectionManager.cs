@@ -17,6 +17,7 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
     public event Func<Guid, string, string, Task>? OnStartSession;
     public event Func<Guid, Task>? OnStopSession;
     public event Func<Task>? OnGetSessions;
+    public event Func<Task>? OnDeregister;
 
     public SignalRConnectionManager(AgentCredentials credentials, ILogger<SignalRConnectionManager> logger)
     {
@@ -59,6 +60,9 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
 
         _connection.On("GetSessions", () =>
             OnGetSessions?.Invoke() ?? Task.CompletedTask);
+
+        _connection.On<DeregisterCommand>("Deregister", _ =>
+            OnDeregister?.Invoke() ?? Task.CompletedTask);
 
         _connection.Reconnecting += error =>
         {

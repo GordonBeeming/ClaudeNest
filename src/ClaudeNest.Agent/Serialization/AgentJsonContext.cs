@@ -19,6 +19,7 @@ namespace ClaudeNest.Agent.Serialization;
 [JsonSerializable(typeof(AgentCredentials))]
 [JsonSerializable(typeof(PairingExchangeRequest))]
 [JsonSerializable(typeof(PairingExchangeResponse))]
+[JsonSerializable(typeof(DeregisterCommand))]
 // Primitives used by SignalR method arguments
 [JsonSerializable(typeof(Guid))]
 [JsonSerializable(typeof(string))]

@@ -113,6 +113,14 @@ export function useSignalR() {
     [],
   );
 
+  const onAgentRemoved = useCallback(
+    (handler: (agentId: string) => void) => {
+      connectionRef.current?.on("AgentRemoved", handler);
+      return () => connectionRef.current?.off("AgentRemoved", handler);
+    },
+    [],
+  );
+
   return {
     connected,
     subscribeToAgent,
@@ -124,5 +132,6 @@ export function useSignalR() {
     onSessionStatusChanged,
     onDirectoryListingResult,
     onAllSessionsUpdated,
+    onAgentRemoved,
   };
 }

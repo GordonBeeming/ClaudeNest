@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   ChevronLeft,
   RefreshCw,
   FolderTree as FolderTreeIcon,
   Activity,
+  Trash2,
 } from "lucide-react";
-import { getAgent } from "../api";
+import { getAgent, deleteAgent } from "../api";
 import type { Agent, SessionStatus } from "../types";
 import { OnlineBadge } from "../components/StatusBadge";
 import { FolderTree } from "../components/FolderTree";
@@ -16,12 +17,15 @@ import { useUserContext } from "../contexts/UserContext";
 
 export function AgentDetail() {
   const { agentId } = useParams<{ agentId: string }>();
+  const navigate = useNavigate();
   const { user } = useUserContext();
   const accountMaxSessions = user?.account?.maxSessions ?? 0;
   const [agent, setAgent] = useState<Agent | null>(null);
   const [sessions, setSessions] = useState<SessionStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   const {
     subscribeToAgent,
@@ -143,6 +147,19 @@ export function AgentDetail() {
     [agentId, requestStartSession],
   );
 
+  const handleRemoveAgent = useCallback(async () => {
+    if (!agentId) return;
+    setRemoving(true);
+    try {
+      await deleteAgent(agentId);
+      navigate("/");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove agent");
+      setRemoving(false);
+      setConfirmRemove(false);
+    }
+  }, [agentId, navigate]);
+
   const handleStopSession = useCallback(
     (sessionId: string) => {
       if (!agentId) return;
@@ -196,6 +213,39 @@ export function AgentDetail() {
             {agent.hostname}
             {agent.os ? ` \u00b7 ${agent.os}` : ""}
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {confirmRemove ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-red-600 dark:text-red-400">
+                {agent.isOnline
+                  ? "This will stop all sessions and deregister the agent."
+                  : "This will permanently remove this agent."}
+              </span>
+              <button
+                onClick={handleRemoveAgent}
+                disabled={removing}
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {removing ? "Removing..." : "Confirm"}
+              </button>
+              <button
+                onClick={() => setConfirmRemove(false)}
+                disabled={removing}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmRemove(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30"
+            >
+              <Trash2 className="h-4 w-4" />
+              Remove
+            </button>
+          )}
         </div>
       </div>
 

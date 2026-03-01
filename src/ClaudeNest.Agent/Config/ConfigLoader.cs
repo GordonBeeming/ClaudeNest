@@ -41,6 +41,15 @@ public static class ConfigLoader
         File.WriteAllText(configPath, json);
     }
 
+    public static void DeleteCredentials()
+    {
+        var credentialsPath = Path.Combine(ConfigDir, "credentials.json");
+        if (File.Exists(credentialsPath))
+        {
+            File.Delete(credentialsPath);
+        }
+    }
+
     public static void SaveCredentials(AgentCredentials credentials)
     {
         Directory.CreateDirectory(ConfigDir);
