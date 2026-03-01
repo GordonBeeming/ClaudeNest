@@ -12,4 +12,5 @@ public sealed class SessionStatusUpdate
     public DateTime StartedAt { get; init; }
     public DateTime? EndedAt { get; init; }
     public int? ExitCode { get; init; }
+    public string? ErrorMessage { get; init; }
 }

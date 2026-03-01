@@ -16,7 +16,7 @@ public sealed class SessionManager(
 
     public event Func<SessionStatusUpdate, Task>? OnSessionStatusChanged;
 
-    public bool TryStartSession(Guid sessionId, string path, out string? error)
+    public bool TryStartSession(Guid sessionId, string path, string? permissionMode, out string? error)
     {
         error = null;
 
@@ -26,10 +26,20 @@ public sealed class SessionManager(
             return false;
         }
 
-        var activeSessions = _sessions.Values.Count(s => s.State is SessionState.Starting or SessionState.Running);
-        if (activeSessions >= config.MaxSessions)
+        var activeSessions = _sessions.Values
+            .Where(s => s.State is SessionState.Starting or SessionState.Running or SessionState.Stopping)
+            .ToList();
+
+        // Check for overlapping paths (same, parent, or child of an active session)
+        var resolvedCheck = Path.GetFullPath(path);
+        var overlapping = activeSessions.FirstOrDefault(s =>
+            string.Equals(s.Path, resolvedCheck, StringComparison.OrdinalIgnoreCase) ||
+            resolvedCheck.StartsWith(s.Path + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+            s.Path.StartsWith(resolvedCheck + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+
+        if (overlapping is not null)
         {
-            error = $"Max sessions ({config.MaxSessions}) reached";
+            error = $"An active session already covers this path ({overlapping.Path})";
             return false;
         }
 
@@ -38,7 +48,8 @@ public sealed class SessionManager(
         {
             SessionId = sessionId,
             Path = resolvedPath,
-            State = SessionState.Starting
+            State = SessionState.Starting,
+            PermissionMode = permissionMode
         };
 
         if (!_sessions.TryAdd(sessionId, session))
@@ -47,6 +58,7 @@ public sealed class SessionManager(
             return false;
         }
 
+        NotifyStatusChanged(session);
         _ = SpawnProcessAsync(session);
         return true;
     }
@@ -118,47 +130,70 @@ public sealed class SessionManager(
     {
         try
         {
+            var arguments = !string.IsNullOrEmpty(session.PermissionMode) && session.PermissionMode != "default"
+                ? $"remote-control --permission-mode {session.PermissionMode}"
+                : "remote-control";
+
             var process = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = config.ClaudeBinary,
-                    Arguments = "remote-control",
+                    Arguments = arguments,
                     WorkingDirectory = session.Path,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
-                },
-                EnableRaisingEvents = true
-            };
-
-            process.Exited += (_, _) =>
-            {
-                session.State = process.ExitCode == 0 ? SessionState.Stopped : SessionState.Crashed;
-                session.EndedAt = DateTime.UtcNow;
-                session.ExitCode = process.ExitCode;
-                NotifyStatusChanged(session);
+                }
             };
 
             process.Start();
             session.Process = process;
             session.Pid = process.Id;
-            session.State = SessionState.Running;
 
-            NotifyStatusChanged(session);
-
-            // Drain stdout/stderr to prevent buffer deadlocks
+            // Start capturing stderr immediately (before checking exit status)
+            var stderrTask = process.StandardError.ReadToEndAsync();
             _ = process.StandardOutput.ReadToEndAsync();
-            _ = process.StandardError.ReadToEndAsync();
+
+            // Only transition to Running if the process hasn't already exited
+            if (!process.HasExited)
+            {
+                session.State = SessionState.Running;
+                NotifyStatusChanged(session);
+            }
 
             await process.WaitForExitAsync();
+
+            // Capture stderr for error reporting
+            var stderr = await stderrTask;
+            if (!string.IsNullOrWhiteSpace(stderr))
+            {
+                logger.LogWarning("Session {SessionId} stderr: {StdErr}", session.SessionId, stderr);
+
+                // Make trust errors actionable
+                if (stderr.Contains("Workspace not trusted"))
+                    session.ErrorMessage = $"Workspace not trusted. Run 'claude' once in {session.Path} on the agent machine to accept the trust dialog, then try again.";
+                else
+                    session.ErrorMessage = stderr.Trim();
+            }
+
+            if (session.State is SessionState.Stopped or SessionState.Crashed)
+                return; // Already handled
+
+            session.State = session.State == SessionState.Stopping || process.ExitCode == 0
+                ? SessionState.Stopped
+                : SessionState.Crashed;
+            session.EndedAt = DateTime.UtcNow;
+            session.ExitCode = process.ExitCode;
+            NotifyStatusChanged(session);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to start claude process for session {SessionId}", session.SessionId);
             session.State = SessionState.Crashed;
             session.EndedAt = DateTime.UtcNow;
+            session.ErrorMessage = ex.Message;
             NotifyStatusChanged(session);
         }
     }
@@ -180,7 +215,8 @@ public sealed class SessionManager(
             Pid = session.Pid,
             StartedAt = session.StartedAt,
             EndedAt = session.EndedAt,
-            ExitCode = session.ExitCode
+            ExitCode = session.ExitCode,
+            ErrorMessage = session.ErrorMessage
         };
     }
 }

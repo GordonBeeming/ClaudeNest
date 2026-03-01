@@ -26,6 +26,19 @@
         "ASPIRE_DASHBOARD_MCP_ENDPOINT_URL": "http://localhost:18263",
         "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "http://localhost:20271"
       }
+    },
+    "prodlike": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "applicationUrl": "https://localhost:17063;http://localhost:15140",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "ProdLike",
+        "DOTNET_ENVIRONMENT": "ProdLike",
+        "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "https://localhost:21146",
+        "ASPIRE_DASHBOARD_MCP_ENDPOINT_URL": "https://localhost:23059",
+        "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "https://localhost:22012"
+      }
     }
   }
 }

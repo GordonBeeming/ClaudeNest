@@ -12,5 +12,7 @@ public sealed class ManagedSession
     public DateTime StartedAt { get; init; } = DateTime.UtcNow;
     public DateTime? EndedAt { get; set; }
     public int? ExitCode { get; set; }
+    public string? ErrorMessage { get; set; }
+    public string? PermissionMode { get; set; }
     public Process? Process { get; set; }
 }

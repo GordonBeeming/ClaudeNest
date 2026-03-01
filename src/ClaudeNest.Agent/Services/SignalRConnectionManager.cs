@@ -14,7 +14,7 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
     private readonly ILogger<SignalRConnectionManager> _logger;
 
     public event Func<string, string, Task>? OnListDirectories;
-    public event Func<Guid, string, Task>? OnStartSession;
+    public event Func<Guid, string, string, Task>? OnStartSession;
     public event Func<Guid, Task>? OnStopSession;
     public event Func<Task>? OnGetSessions;
 
@@ -30,6 +30,7 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
 
         var jsonOptions = new JsonSerializerOptions
         {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             TypeInfoResolverChain = { AgentJsonContext.Default }
         };
 
@@ -50,8 +51,8 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
         _connection.On<string, string>("ListDirectories", (requestId, path) =>
             OnListDirectories?.Invoke(requestId, path) ?? Task.CompletedTask);
 
-        _connection.On<Guid, string>("StartSession", (sessionId, path) =>
-            OnStartSession?.Invoke(sessionId, path) ?? Task.CompletedTask);
+        _connection.On<Guid, string, string>("StartSession", (sessionId, path, permissionMode) =>
+            OnStartSession?.Invoke(sessionId, path, permissionMode) ?? Task.CompletedTask);
 
         _connection.On<Guid>("StopSession", sessionId =>
             OnStopSession?.Invoke(sessionId) ?? Task.CompletedTask);
@@ -81,10 +82,11 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
         _logger.LogInformation("Connected to SignalR hub at {Url}", hubUrl);
     }
 
-    public async Task RegisterAgentAsync(AgentInfo agentInfo)
+    public async Task<AgentRegistrationResult?> RegisterAgentAsync(AgentInfo agentInfo)
     {
         if (_connection is not null)
-            await _connection.InvokeAsync("RegisterAgent", agentInfo);
+            return await _connection.InvokeAsync<AgentRegistrationResult>("RegisterAgent", agentInfo);
+        return null;
     }
 
     public async Task SendSessionStatusAsync(SessionStatusUpdate update)

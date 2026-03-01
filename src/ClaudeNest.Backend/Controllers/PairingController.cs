@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using ClaudeNest.Backend.Data;
 using ClaudeNest.Backend.Data.Entities;
+using ClaudeNest.Shared.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -23,8 +24,21 @@ public class PairingController(NestDbContext db) : ControllerBase
         var auth0UserId = User.FindFirst("sub")?.Value;
         if (auth0UserId is null) return Unauthorized();
 
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Auth0UserId == auth0UserId);
+        var user = await db.Users
+            .Include(u => u.Account)
+            .ThenInclude(a => a.Plan)
+            .FirstOrDefaultAsync(u => u.Auth0UserId == auth0UserId);
         if (user is null) return NotFound("User not found");
+
+        // Check subscription is active or trialing
+        var status = user.Account.SubscriptionStatus;
+        if (status != SubscriptionStatus.Active && status != SubscriptionStatus.Trialing)
+            return BadRequest("Active subscription required to pair agents");
+
+        if (status == SubscriptionStatus.Trialing &&
+            user.Account.TrialEndsAt.HasValue &&
+            user.Account.TrialEndsAt.Value < DateTime.UtcNow)
+            return BadRequest("Trial has expired");
 
         var tokenBytes = RandomNumberGenerator.GetBytes(32);
         var token = Convert.ToBase64String(tokenBytes);
@@ -55,6 +69,8 @@ public class PairingController(NestDbContext db) : ControllerBase
 
         var pairingToken = await db.PairingTokens
             .Include(t => t.User)
+            .ThenInclude(u => u.Account)
+            .ThenInclude(a => a.Plan)
             .FirstOrDefaultAsync(t => t.RedeemedAt == null && t.ExpiresAt > DateTime.UtcNow);
 
         if (pairingToken is null ||
@@ -63,10 +79,29 @@ public class PairingController(NestDbContext db) : ControllerBase
             return BadRequest("Invalid or expired pairing token");
         }
 
+        var user = pairingToken.User;
+        var account = user.Account;
+
+        // Check subscription status
+        var status = account.SubscriptionStatus;
+        if (status != SubscriptionStatus.Active && status != SubscriptionStatus.Trialing)
+            return BadRequest("Active subscription required to pair agents");
+
+        if (status == SubscriptionStatus.Trialing &&
+            account.TrialEndsAt.HasValue &&
+            account.TrialEndsAt.Value < DateTime.UtcNow)
+            return BadRequest("Trial has expired");
+
+        // Enforce max agents
+        var maxAgents = account.Plan?.MaxAgents ?? 0;
+        var currentAgentCount = await db.Agents.CountAsync(a => a.AccountId == account.Id);
+        if (currentAgentCount >= maxAgents)
+            return BadRequest("Agent limit reached for your plan");
+
         // Create the agent
         var agent = new Data.Entities.Agent
         {
-            UserId = pairingToken.UserId,
+            AccountId = user.AccountId,
             Name = request.AgentName,
             Hostname = request.Hostname,
             OS = request.OS
@@ -80,7 +115,7 @@ public class PairingController(NestDbContext db) : ControllerBase
 
         var credential = new AgentCredential
         {
-            AgentId = agent.Id,
+            Agent = agent,
             SecretHash = secretHash
         };
         db.AgentCredentials.Add(credential);

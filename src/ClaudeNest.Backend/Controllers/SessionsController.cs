@@ -16,9 +16,9 @@ public class SessionsController(NestDbContext db) : ControllerBase
         var auth0UserId = User.FindFirst("sub")?.Value;
         if (auth0UserId is null) return Unauthorized();
 
-        // Verify the agent belongs to this user
+        // Verify the agent belongs to this user's account
         var agentBelongsToUser = await db.Agents
-            .AnyAsync(a => a.Id == agentId && a.User.Auth0UserId == auth0UserId);
+            .AnyAsync(a => a.Id == agentId && a.Account.Users.Any(u => u.Auth0UserId == auth0UserId));
 
         if (!agentBelongsToUser) return NotFound();
 

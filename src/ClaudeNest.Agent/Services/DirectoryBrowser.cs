@@ -21,6 +21,7 @@ public sealed class DirectoryBrowser(NestConfig config)
             .Where(dir => !config.DeniedPaths.Any(d => dir.StartsWith(d, StringComparison.OrdinalIgnoreCase)))
             .Select(Path.GetFileName)
             .Where(name => name is not null)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToList()!;
     }
 

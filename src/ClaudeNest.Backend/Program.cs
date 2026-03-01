@@ -1,8 +1,11 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using ClaudeNest.Backend.Auth;
 using ClaudeNest.Backend.Data;
 using ClaudeNest.Backend.Hubs;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,8 +31,17 @@ else
 }
 builder.Services.AddAuthorization();
 
-// SignalR
-builder.Services.AddSignalR();
+// SignalR — use camelCase + string enums to match frontend expectations
+builder.Services.AddSignalR(options =>
+    {
+        if (builder.Environment.IsDevelopment())
+            options.EnableDetailedErrors = true;
+    })
+    .AddJsonProtocol(options =>
+    {
+        options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
 
 // Controllers
 builder.Services.AddControllers();
@@ -48,12 +60,20 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Seed dev data in Development mode
+// Database initialization
 if (app.Environment.IsDevelopment())
 {
+    // Dev mode: auto-create DB + seed test data
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
     await DevDataSeeder.SeedAsync(db);
+}
+else
+{
+    // ProdLike / Production: apply EF migrations
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
+    await db.Database.MigrateAsync();
 }
 
 app.MapDefaultEndpoints();

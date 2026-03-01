@@ -1,27 +1,76 @@
+using System.Text.Json;
+using ClaudeNest.Backend.Data;
 using ClaudeNest.Shared.Messages;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 
 namespace ClaudeNest.Backend.Hubs;
 
-public class NestHub : Hub
+public class NestHub(NestDbContext db) : Hub
 {
     // --- Agent → Server ---
 
-    public async Task RegisterAgent(AgentInfo agentInfo)
+    public async Task<object> RegisterAgent(AgentInfo agentInfo)
     {
-        // Store the agent's connection mapping
         var connectionId = Context.ConnectionId;
         AgentConnectionMap.AddOrUpdate(agentInfo.AgentId, connectionId);
 
         await Groups.AddToGroupAsync(connectionId, $"agent:{agentInfo.AgentId}");
 
+        // Update agent status in DB
+        var agent = await db.Agents
+            .Include(a => a.Account)
+            .ThenInclude(a => a!.Plan)
+            .FirstOrDefaultAsync(a => a.Id == agentInfo.AgentId);
+        if (agent is not null)
+        {
+            agent.IsOnline = true;
+            agent.LastSeenAt = DateTime.UtcNow;
+            if (agentInfo.Name is not null)
+                agent.Name = agentInfo.Name;
+            agent.Hostname = agentInfo.Hostname;
+            agent.OS = agentInfo.OS;
+            agent.AllowedPathsJson = agentInfo.AllowedPaths.Count > 0
+                ? JsonSerializer.Serialize(agentInfo.AllowedPaths)
+                : null;
+            await db.SaveChangesAsync();
+        }
+
         // Notify web clients that this agent is online
         await Clients.Group($"user:{agentInfo.AgentId}")
             .SendAsync("AgentStatusChanged", agentInfo.AgentId, true);
+
+        return new { EffectiveMaxSessions = agent?.Account?.Plan?.MaxSessions ?? 3 };
     }
 
     public async Task SessionStatusChanged(SessionStatusUpdate update)
     {
+        // Persist session state to DB
+        var session = await db.Sessions.FindAsync(update.SessionId);
+        if (session is not null)
+        {
+            session.State = update.State.ToString();
+            session.Pid = update.Pid;
+            session.EndedAt = update.EndedAt;
+            session.ExitCode = update.ExitCode;
+            await db.SaveChangesAsync();
+        }
+        else
+        {
+            db.Sessions.Add(new Data.Entities.Session
+            {
+                Id = update.SessionId,
+                AgentId = update.AgentId,
+                Path = update.Path,
+                State = update.State.ToString(),
+                Pid = update.Pid,
+                StartedAt = update.StartedAt,
+                EndedAt = update.EndedAt,
+                ExitCode = update.ExitCode
+            });
+            await db.SaveChangesAsync();
+        }
+
         // Relay session status to web clients watching this agent
         await Clients.Group($"user:{update.AgentId}")
             .SendAsync("SessionStatusChanged", update);
@@ -29,8 +78,6 @@ public class NestHub : Hub
 
     public async Task DirectoryListing(DirectoryListingResponse response)
     {
-        // Relay directory listing back to the requesting web client
-        // The requestId encodes the web client's connection ID
         if (PendingRequests.TryRemove(response.RequestId, out var webConnectionId))
         {
             await Clients.Client(webConnectionId)
@@ -44,10 +91,19 @@ public class NestHub : Hub
             .SendAsync("AllSessionsUpdated", agentId, sessions);
     }
 
-    public Task Heartbeat()
+    public async Task Heartbeat()
     {
-        // Agent keepalive — update last seen
-        return Task.CompletedTask;
+        // Update agent last seen time
+        var agentId = AgentConnectionMap.GetAgentByConnection(Context.ConnectionId);
+        if (agentId.HasValue)
+        {
+            var agent = await db.Agents.FindAsync(agentId.Value);
+            if (agent is not null)
+            {
+                agent.LastSeenAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+            }
+        }
     }
 
     // --- Web Client → Server → Agent ---
@@ -80,10 +136,77 @@ public class NestHub : Hub
 
     public async Task RequestStartSession(Guid agentId, Guid sessionId, string path)
     {
+        // Enforce account-wide session limit
+        var agent = await db.Agents
+            .Include(a => a.Account)
+            .ThenInclude(a => a!.Plan)
+            .FirstOrDefaultAsync(a => a.Id == agentId);
+
+        if (agent?.Account is not null)
+        {
+            // Check subscription status
+            var status = agent.Account.SubscriptionStatus;
+            if (status != Shared.Enums.SubscriptionStatus.Active && status != Shared.Enums.SubscriptionStatus.Trialing)
+            {
+                await Clients.Group($"user:{agentId}")
+                    .SendAsync("SessionStatusChanged", new SessionStatusUpdate
+                    {
+                        SessionId = sessionId,
+                        AgentId = agentId,
+                        Path = path,
+                        State = Shared.Enums.SessionState.Crashed,
+                        StartedAt = DateTime.UtcNow,
+                        EndedAt = DateTime.UtcNow
+                    });
+                return;
+            }
+
+            // Check trial expiry
+            if (status == Shared.Enums.SubscriptionStatus.Trialing &&
+                agent.Account.TrialEndsAt.HasValue &&
+                agent.Account.TrialEndsAt.Value < DateTime.UtcNow)
+            {
+                await Clients.Group($"user:{agentId}")
+                    .SendAsync("SessionStatusChanged", new SessionStatusUpdate
+                    {
+                        SessionId = sessionId,
+                        AgentId = agentId,
+                        Path = path,
+                        State = Shared.Enums.SessionState.Crashed,
+                        StartedAt = DateTime.UtcNow,
+                        EndedAt = DateTime.UtcNow
+                    });
+                return;
+            }
+
+            // Check account-wide session count
+            var maxSessions = agent.Account.Plan?.MaxSessions ?? 0;
+            var activeSessionCount = await db.Sessions.CountAsync(s =>
+                s.Agent.AccountId == agent.AccountId &&
+                (s.State == "Running" || s.State == "Starting" || s.State == "Requested"));
+
+            if (activeSessionCount >= maxSessions)
+            {
+                await Clients.Group($"user:{agentId}")
+                    .SendAsync("SessionStatusChanged", new SessionStatusUpdate
+                    {
+                        SessionId = sessionId,
+                        AgentId = agentId,
+                        Path = path,
+                        State = Shared.Enums.SessionState.Crashed,
+                        StartedAt = DateTime.UtcNow,
+                        EndedAt = DateTime.UtcNow
+                    });
+                return;
+            }
+        }
+
+        var permissionMode = agent?.Account?.PermissionMode ?? "default";
+
         if (AgentConnectionMap.TryGetConnectionId(agentId, out var agentConnectionId))
         {
             await Clients.Client(agentConnectionId)
-                .SendAsync("StartSession", sessionId, path);
+                .SendAsync("StartSession", sessionId, path, permissionMode);
         }
     }
 
@@ -107,7 +230,25 @@ public class NestHub : Hub
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        var agentId = AgentConnectionMap.GetAgentByConnection(Context.ConnectionId);
         AgentConnectionMap.RemoveByConnection(Context.ConnectionId);
+
+        if (agentId.HasValue)
+        {
+            // Mark agent offline in DB
+            var agent = await db.Agents.FindAsync(agentId.Value);
+            if (agent is not null)
+            {
+                agent.IsOnline = false;
+                agent.LastSeenAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+            }
+
+            // Notify web clients
+            await Clients.Group($"user:{agentId.Value}")
+                .SendAsync("AgentStatusChanged", agentId.Value, false);
+        }
+
         await base.OnDisconnectedAsync(exception);
     }
 
@@ -126,7 +267,6 @@ internal sealed class AgentConnectionMap
     {
         lock (_lock)
         {
-            // Remove old connection for this agent if exists
             if (_agentToConnection.TryGetValue(agentId, out var oldConn))
             {
                 _connectionToAgent.Remove(oldConn);
@@ -142,6 +282,14 @@ internal sealed class AgentConnectionMap
         lock (_lock)
         {
             return _agentToConnection.TryGetValue(agentId, out connectionId!);
+        }
+    }
+
+    public Guid? GetAgentByConnection(string connectionId)
+    {
+        lock (_lock)
+        {
+            return _connectionToAgent.TryGetValue(connectionId, out var agentId) ? agentId : null;
         }
     }
 

@@ -32,4 +32,20 @@ public static class ConfigLoader
         var json = File.ReadAllText(credentialsPath);
         return JsonSerializer.Deserialize(json, AgentJsonContext.Default.AgentCredentials);
     }
+
+    public static void SaveConfig(NestConfig config)
+    {
+        Directory.CreateDirectory(ConfigDir);
+        var configPath = Path.Combine(ConfigDir, "config.json");
+        var json = JsonSerializer.Serialize(config, AgentJsonContext.Default.NestConfig);
+        File.WriteAllText(configPath, json);
+    }
+
+    public static void SaveCredentials(AgentCredentials credentials)
+    {
+        Directory.CreateDirectory(ConfigDir);
+        var credentialsPath = Path.Combine(ConfigDir, "credentials.json");
+        var json = JsonSerializer.Serialize(credentials, AgentJsonContext.Default.AgentCredentials);
+        File.WriteAllText(credentialsPath, json);
+    }
 }

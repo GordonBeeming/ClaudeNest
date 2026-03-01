@@ -43,3 +43,9 @@ Thumbs.db
 
 ## Agent local config (never commit credentials)
 .claudenest/
+
+## Dev workspace (sample project folders for local testing)
+.dev-workspace/
+
+## Frontend local env (Auth0 config, etc.)
+.env.local

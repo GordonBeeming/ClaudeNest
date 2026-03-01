@@ -1,13 +1,15 @@
 using System.Runtime.InteropServices;
 using ClaudeNest.Agent.Config;
 using ClaudeNest.Agent.Services;
+using ClaudeNest.Shared.Enums;
 using ClaudeNest.Shared.Messages;
 
 namespace ClaudeNest.Agent;
 
 public class AgentWorker(
     ILogger<AgentWorker> logger,
-    IConfiguration configuration) : BackgroundService
+    IConfiguration configuration,
+    IHostApplicationLifetime lifetime) : BackgroundService
 {
     private SignalRConnectionManager? _connectionManager;
     private SessionManager? _sessionManager;
@@ -15,11 +17,13 @@ public class AgentWorker(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var config = ConfigLoader.LoadConfig();
+        MergeConfigFromEnvironment(config, configuration);
         var credentials = LoadCredentials(configuration);
 
         if (credentials is null)
         {
             logger.LogError("No credentials found. Run 'claudenest install --token <TOKEN>' first.");
+            lifetime.StopApplication();
             return;
         }
 
@@ -57,13 +61,22 @@ public class AgentWorker(
             });
         };
 
-        _connectionManager.OnStartSession += (sessionId, path) =>
+        _connectionManager.OnStartSession += async (sessionId, path, permissionMode) =>
         {
-            if (!_sessionManager.TryStartSession(sessionId, path, out var error))
+            if (!_sessionManager.TryStartSession(sessionId, path, permissionMode, out var error))
             {
                 logger.LogWarning("Failed to start session {SessionId}: {Error}", sessionId, error);
+                // Notify the frontend that the session failed to start
+                await _connectionManager.SendSessionStatusAsync(new SessionStatusUpdate
+                {
+                    SessionId = sessionId,
+                    AgentId = credentials.AgentId,
+                    Path = path,
+                    State = SessionState.Crashed,
+                    StartedAt = DateTime.UtcNow,
+                    EndedAt = DateTime.UtcNow
+                });
             }
-            return Task.CompletedTask;
         };
 
         _connectionManager.OnStopSession += sessionId =>
@@ -86,6 +99,7 @@ public class AgentWorker(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to connect to backend at {Url}", credentials.BackendUrl);
+            lifetime.StopApplication();
             return;
         }
 
@@ -93,13 +107,15 @@ public class AgentWorker(
         await _connectionManager.RegisterAgentAsync(new AgentInfo
         {
             AgentId = credentials.AgentId,
+            Name = config.Name,
             Hostname = Environment.MachineName,
             OS = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows"
                 : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "macos"
                 : "linux",
-            MaxSessions = config.MaxSessions,
             AllowedPaths = config.AllowedPaths
         });
+
+        logger.LogInformation("Agent registered successfully");
 
         // Report current sessions on connect
         var currentSessions = _sessionManager.GetAllSessions();
@@ -127,6 +143,25 @@ public class AgentWorker(
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Error during heartbeat/health check");
+            }
+        }
+    }
+
+    private static void MergeConfigFromEnvironment(NestConfig config, IConfiguration configuration)
+    {
+        // Agent name from env
+        var name = configuration["Agent:Name"];
+        if (!string.IsNullOrEmpty(name))
+            config.Name = name;
+
+        // Merge allowed paths from env (e.g. Agent__AllowedPaths__0, Agent__AllowedPaths__1)
+        var envPaths = configuration.GetSection("Agent:AllowedPaths").Get<string[]>();
+        if (envPaths is { Length: > 0 })
+        {
+            foreach (var path in envPaths)
+            {
+                if (!string.IsNullOrWhiteSpace(path) && !config.AllowedPaths.Contains(path))
+                    config.AllowedPaths.Add(path);
             }
         }
     }

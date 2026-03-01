@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@theme {
+  --color-nest-50: #f0f7ff;
+  --color-nest-100: #e0effe;
+  --color-nest-200: #bae0fd;
+  --color-nest-300: #7cc8fb;
+  --color-nest-400: #36adf6;
+  --color-nest-500: #0c93e7;
+  --color-nest-600: #0074c5;
+  --color-nest-700: #015da0;
+  --color-nest-800: #064f84;
+  --color-nest-900: #0b426e;
+  --color-nest-950: #072a49;
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  @apply bg-gray-50 text-gray-900 antialiased dark:bg-gray-950 dark:text-gray-100;
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  margin: 0;
+}
+
+/* Smooth transitions for interactive elements */
+button,
+a {
+  @apply transition-colors duration-150;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-gray-300 dark:bg-gray-700;
+}
