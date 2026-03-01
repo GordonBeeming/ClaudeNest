@@ -1,0 +1,45 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+*.nupkg
+*.snupkg
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/
+bld/
+
+## NuGet
+**/packages/*
+*.nuget.props
+*.nuget.targets
+
+## IDE
+.idea/
+*.swp
+*~
+
+## User secrets
+secrets.json
+
+## Aspire
+.aspire/
+
+## Node (for web frontend)
+node_modules/
+dist/
+
+## OS
+.DS_Store
+Thumbs.db
+
+## Agent local config (never commit credentials)
+.claudenest/

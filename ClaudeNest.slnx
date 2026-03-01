@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ClaudeNest.Agent/ClaudeNest.Agent.csproj" />
+    <Project Path="src/ClaudeNest.AppHost/ClaudeNest.AppHost.csproj" />
+    <Project Path="src/ClaudeNest.Backend/ClaudeNest.Backend.csproj" />
+    <Project Path="src/ClaudeNest.ServiceDefaults/ClaudeNest.ServiceDefaults.csproj" />
+    <Project Path="src/ClaudeNest.Shared/ClaudeNest.Shared.csproj" />
+  </Folder>
+</Solution>

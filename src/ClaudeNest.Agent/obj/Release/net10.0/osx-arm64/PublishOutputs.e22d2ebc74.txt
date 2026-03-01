@@ -1,6 +1,0 @@
-/var/folders/_k/qcmxfg_d2dqc_3t60qhwzdl00000gn/T/claudenest-build-osx-arm64-d7e934e0cea14d24b476beeb9053b2cb/appsettings.Development.json
-/var/folders/_k/qcmxfg_d2dqc_3t60qhwzdl00000gn/T/claudenest-build-osx-arm64-d7e934e0cea14d24b476beeb9053b2cb/appsettings.json
-/var/folders/_k/qcmxfg_d2dqc_3t60qhwzdl00000gn/T/claudenest-build-osx-arm64-d7e934e0cea14d24b476beeb9053b2cb/ClaudeNest.Agent.pdb
-/var/folders/_k/qcmxfg_d2dqc_3t60qhwzdl00000gn/T/claudenest-build-osx-arm64-d7e934e0cea14d24b476beeb9053b2cb/ClaudeNest.ServiceDefaults.pdb
-/var/folders/_k/qcmxfg_d2dqc_3t60qhwzdl00000gn/T/claudenest-build-osx-arm64-d7e934e0cea14d24b476beeb9053b2cb/ClaudeNest.Shared.pdb
-/var/folders/_k/qcmxfg_d2dqc_3t60qhwzdl00000gn/T/claudenest-build-osx-arm64-d7e934e0cea14d24b476beeb9053b2cb/ClaudeNest.Agent
