@@ -49,3 +49,4 @@ Thumbs.db
 
 ## Frontend local env (Auth0 config, etc.)
 .env.local
+.playwright-mcp/

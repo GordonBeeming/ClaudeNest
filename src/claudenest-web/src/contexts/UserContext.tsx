@@ -2,9 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import { useAuth0 } from "@auth0/auth0-react";
 import { getMe, setAccessTokenGetter } from "../api";
 import type { UserProfile, AccountInfo } from "../types";
-
-const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE;
-const isAuth0Configured = !!(import.meta.env.VITE_AUTH0_DOMAIN && import.meta.env.VITE_AUTH0_CLIENT_ID);
+import { auth0Audience, isAuth0Configured } from "../config";
 
 interface UserContextValue {
   user: UserProfile | null;

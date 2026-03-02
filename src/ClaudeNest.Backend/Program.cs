@@ -9,6 +9,13 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// User secrets are only loaded automatically in Development.
+// Load them explicitly for ProdLike so Auth0 config is available.
+if (!builder.Environment.IsDevelopment() && !builder.Environment.IsProduction())
+{
+    builder.Configuration.AddUserSecrets(typeof(Program).Assembly, optional: true);
+}
+
 builder.AddServiceDefaults();
 
 // Database
@@ -27,6 +34,7 @@ else
         {
             options.Authority = builder.Configuration["Auth0:Authority"];
             options.Audience = builder.Configuration["Auth0:Audience"];
+            options.MapInboundClaims = false;
         });
 }
 builder.Services.AddAuthorization();
@@ -42,6 +50,9 @@ builder.Services.AddSignalR(options =>
         options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });
+
+// HTTP client for Auth0 /userinfo calls
+builder.Services.AddHttpClient();
 
 // Controllers
 builder.Services.AddControllers();

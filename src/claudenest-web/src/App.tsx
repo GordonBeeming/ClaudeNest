@@ -7,11 +7,7 @@ import { PlanSelection } from "./pages/PlanSelection";
 import { AccountPage } from "./pages/AccountPage";
 import { UserProvider, useUserContext } from "./contexts/UserContext";
 import { RefreshCw, Bird } from "lucide-react";
-
-const auth0Domain = import.meta.env.VITE_AUTH0_DOMAIN;
-const auth0ClientId = import.meta.env.VITE_AUTH0_CLIENT_ID;
-const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE;
-const isAuth0Configured = !!(auth0Domain && auth0ClientId);
+import { auth0Domain, auth0ClientId, auth0Audience, isAuth0Configured } from "./config";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, loginWithRedirect } = useAuth0();
@@ -111,6 +107,8 @@ export default function App() {
         <Auth0Provider
           domain={auth0Domain}
           clientId={auth0ClientId}
+          cacheLocation="localstorage"
+          useRefreshTokens={true}
           authorizationParams={{
             redirect_uri: window.location.origin,
             audience: auth0Audience,

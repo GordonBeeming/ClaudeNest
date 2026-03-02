@@ -1,3 +1,5 @@
+using System.Net.Http.Headers;
+using System.Text.Json;
 using ClaudeNest.Backend.Data;
 using ClaudeNest.Backend.Data.Entities;
 using Microsoft.AspNetCore.Authorization;
@@ -9,7 +11,7 @@ namespace ClaudeNest.Backend.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class MeController(NestDbContext db) : ControllerBase
+public class MeController(NestDbContext db, IConfiguration config, IHttpClientFactory httpClientFactory) : ControllerBase
 {
     /// <summary>
     /// Returns the current user's profile.
@@ -21,7 +23,7 @@ public class MeController(NestDbContext db) : ControllerBase
         var auth0UserId = User.FindFirst("sub")?.Value;
         if (auth0UserId is null) return Unauthorized();
 
-        var email = User.FindFirst("email")?.Value ?? "unknown@unknown";
+        var email = User.FindFirst("email")?.Value;
         var name = User.FindFirst("name")?.Value;
 
         var user = await db.Users
@@ -31,18 +33,23 @@ public class MeController(NestDbContext db) : ControllerBase
 
         if (user is null)
         {
+            // Access tokens don't include profile claims — fetch from Auth0 /userinfo
+            if (email is null)
+            {
+                (email, name) = await FetchAuth0UserInfo();
+            }
+
             var account = new Account
             {
-                Name = name ?? email
+                Name = name ?? email ?? "User"
             };
-            db.Accounts.Add(account);
 
             user = new User
             {
                 Auth0UserId = auth0UserId,
-                Email = email,
+                Email = email!,
                 DisplayName = name,
-                AccountId = account.Id
+                Account = account
             };
             db.Users.Add(user);
             await db.SaveChangesAsync();
@@ -72,5 +79,34 @@ public class MeController(NestDbContext db) : ControllerBase
                 MaxSessions = account2.Plan?.MaxSessions ?? 0
             }
         });
+    }
+
+    private async Task<(string? email, string? name)> FetchAuth0UserInfo()
+    {
+        var authority = config["Auth0:Authority"]?.TrimEnd('/');
+        if (authority is null) return (null, null);
+
+        var accessToken = HttpContext.Request.Headers.Authorization
+            .FirstOrDefault()?.Replace("Bearer ", "");
+        if (accessToken is null) return (null, null);
+
+        try
+        {
+            var client = httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", accessToken);
+
+            var response = await client.GetAsync($"{authority}/userinfo");
+            if (!response.IsSuccessStatusCode) return (null, null);
+
+            var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+            var email = json.TryGetProperty("email", out var e) ? e.GetString() : null;
+            var name = json.TryGetProperty("name", out var n) ? n.GetString() : null;
+            return (email, name);
+        }
+        catch
+        {
+            return (null, null);
+        }
     }
 }

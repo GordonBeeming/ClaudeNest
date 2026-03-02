@@ -5,8 +5,7 @@ import { Bird, Wifi, WifiOff, LogOut, Settings, ChevronDown } from "lucide-react
 import { useSignalR } from "../hooks/useSignalR";
 import { SignalRContext } from "../contexts/SignalRContext";
 import { useUserContext } from "../contexts/UserContext";
-
-const isAuth0Configured = !!(import.meta.env.VITE_AUTH0_DOMAIN && import.meta.env.VITE_AUTH0_CLIENT_ID);
+import { isAuth0Configured } from "../config";
 
 /** Sign out button — only rendered when Auth0 is active (inside Auth0Provider). */
 function Auth0SignOutButton({ onClose }: { onClose: () => void }) {
@@ -22,6 +21,23 @@ function Auth0SignOutButton({ onClose }: { onClose: () => void }) {
     >
       <LogOut className="h-4 w-4" />
       Sign out
+    </button>
+  );
+}
+
+/** Compact sign-out for the header — shown when Auth0 is active but user profile hasn't loaded. */
+function Auth0HeaderSignOut() {
+  const { logout, isAuthenticated } = useAuth0();
+
+  if (!isAuthenticated) return null;
+
+  return (
+    <button
+      onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+      className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+    >
+      <LogOut className="h-4 w-4" />
+      <span className="hidden sm:inline">Sign out</span>
     </button>
   );
 }
@@ -124,7 +140,7 @@ export function Layout() {
                 </span>
               )}
 
-              {user && <UserMenu />}
+              {user ? <UserMenu /> : isAuth0Configured && <Auth0HeaderSignOut />}
             </div>
           </div>
         </header>
