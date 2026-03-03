@@ -289,7 +289,7 @@ function FolderNode({
         )}
       </div>
 
-      {error && (
+      {expanded && error && (
         <p
           className="px-2 py-1 text-xs text-red-500"
           style={{ paddingLeft: `${(depth + 1) * 20 + 8}px` }}
