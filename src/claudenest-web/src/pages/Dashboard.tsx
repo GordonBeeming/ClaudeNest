@@ -37,11 +37,17 @@ export function Dashboard() {
   // Listen for real-time agent status changes
   useEffect(() => {
     return onAgentStatusChanged((agentId, isOnline) => {
-      setAgents((prev) =>
-        prev.map((a) => (a.id === agentId ? { ...a, isOnline } : a)),
-      );
+      setAgents((prev) => {
+        const existed = prev.some((a) => a.id === agentId);
+        if (isOnline && !existed) {
+          // New agent just came online — close the install modal and refresh
+          setShowPairing(false);
+          fetchAgents();
+        }
+        return prev.map((a) => (a.id === agentId ? { ...a, isOnline } : a));
+      });
     });
-  }, [onAgentStatusChanged]);
+  }, [onAgentStatusChanged, fetchAgents]);
 
   // Listen for agent removal (handles multi-tab scenario)
   useEffect(() => {

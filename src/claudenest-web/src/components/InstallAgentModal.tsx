@@ -89,7 +89,7 @@ function installCommand(filename: string, token: string, backendUrl: string, opt
   const pathArg = options?.devWorkspacePath ? ` --path "${options.devWorkspacePath}"` : "";
   const run = `./${filename} install --token ${token} --backend ${backendUrl}${pathArg}`;
   if (isWindows) return run;
-  const quarantine = options?.localBuild && isMac ? `xattr -d com.apple.quarantine ./${filename} 2>/dev/null; ` : "";
+  const quarantine = isMac ? `xattr -d com.apple.quarantine ./${filename} 2>/dev/null; ` : "";
   return `${quarantine}chmod +x ./${filename} && ${run}`;
 }
 
@@ -169,6 +169,8 @@ function PlatformSection({
                 <a
                   key={dl.rid}
                   href={`${RELEASE_BASE}/${dl.filename}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
                 >
                   <Download className="h-4 w-4" />
@@ -291,8 +293,14 @@ export function InstallAgentModal({ open, onClose }: InstallAgentModalProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="mx-4 max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:bg-gray-900">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={handleClose}
+    >
+      <div
+        className="mx-4 max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:bg-gray-900"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Install Agent</h2>
           <button
@@ -345,6 +353,8 @@ export function InstallAgentModal({ open, onClose }: InstallAgentModalProps) {
                             <a
                               key={dl.rid}
                               href={`/api/agent-download/${dl.rid}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               className="inline-flex items-center gap-2 rounded-lg border border-green-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-green-50 dark:border-green-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-green-900/30"
                             >
                               <Download className="h-4 w-4" />
