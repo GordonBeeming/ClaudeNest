@@ -247,6 +247,8 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext,
             }
         }
 
+        db.Sessions.RemoveRange(agent.Sessions);
+        db.AgentCredentials.RemoveRange(agent.Credentials);
         db.Agents.Remove(agent);
         await db.SaveChangesAsync();
 

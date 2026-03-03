@@ -311,7 +311,7 @@ export function CouponManagement() {
             No coupons created yet
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 dark:border-gray-800">
@@ -374,7 +374,7 @@ export function CouponManagement() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </>
         )}
       </section>
     </div>

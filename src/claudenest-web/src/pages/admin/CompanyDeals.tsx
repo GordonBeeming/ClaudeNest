@@ -182,7 +182,7 @@ export function CompanyDeals() {
             No company deals created yet
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 dark:border-gray-800">
@@ -265,7 +265,7 @@ export function CompanyDeals() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </>
         )}
       </section>
     </div>
