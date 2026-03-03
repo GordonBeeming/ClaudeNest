@@ -15,8 +15,13 @@ public class AgentDownloadController(IConfiguration configuration, IWebHostEnvir
     [HttpGet("available")]
     public IActionResult GetAvailability()
     {
+        var version = configuration["Agent:LatestVersion"] ?? "1.0.0";
+
         if (!IsEnabled())
-            return NotFound();
+        {
+            // In production, return GitHub Releases info
+            return Ok(new { available = true, rids = AllowedRids, version, source = "github-releases" });
+        }
 
         // In dev, the workspace is at <repo-root>/.dev-workspace. ContentRoot = src/ClaudeNest.Backend/
         var devWorkspacePath = configuration["DevWorkspacePath"]
@@ -30,17 +35,22 @@ public class AgentDownloadController(IConfiguration configuration, IWebHostEnvir
                 devWorkspacePath = candidate;
         }
 
-        return Ok(new { available = true, rids = AllowedRids, devWorkspacePath });
+        return Ok(new { available = true, rids = AllowedRids, devWorkspacePath, version, source = "local-build" });
     }
 
     [HttpGet("{rid}")]
     public async Task<IActionResult> DownloadAgent(string rid, CancellationToken cancellationToken)
     {
-        if (!IsEnabled())
-            return NotFound();
-
         if (!AllowedRids.Contains(rid))
             return BadRequest($"Invalid RID '{rid}'. Allowed: {string.Join(", ", AllowedRids)}");
+
+        // In production (or when local build is disabled), redirect to GitHub Releases
+        if (!IsEnabled())
+        {
+            var version = configuration["Agent:LatestVersion"] ?? "1.0.0";
+            var filename = rid.StartsWith("win-") ? $"claudenest-agent-{rid}.exe" : $"claudenest-agent-{rid}";
+            return Redirect($"https://github.com/gordonbeeming/ClaudeNest/releases/download/agent-v{version}/{filename}");
+        }
 
         var projectPath = ResolveProjectPath();
         if (projectPath is null || !System.IO.File.Exists(projectPath))
