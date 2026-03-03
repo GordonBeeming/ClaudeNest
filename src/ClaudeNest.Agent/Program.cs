@@ -8,28 +8,34 @@ using ClaudeNest.Agent.Serialization;
 using ClaudeNest.Agent.ServiceInstall;
 
 // Handle subcommands — first arg is always the command
-if (args.Length > 0 && args[0] == "add-path")
+if (args.Length == 0 || args[0] == "help")
+{
+    PrintHelp();
+    return 0;
+}
+
+if (args[0] == "add-path")
 {
     return await HandleAddPathCommand(args);
 }
 
-if (args.Length > 0 && args[0] == "remove-path")
+if (args[0] == "remove-path")
 {
     return await HandleRemovePathCommand(args);
 }
 
-if (args.Length > 0 && args[0] == "list-paths")
+if (args[0] == "list-paths")
 {
     return HandleListPaths();
 }
 
-if (args.Length > 0 && args[0] == "uninstall")
+if (args[0] == "uninstall")
 {
     return await HandleUninstallAsync();
 }
 
 // Handle 'install' subcommand: pair, register service, and optionally run interactively
-if (args.Length > 0 && args[0] == "install")
+if (args[0] == "install")
 {
     var exitCode = await HandleInstallAsync(args);
     if (exitCode >= 0)
@@ -41,10 +47,16 @@ if (args.Length > 0 && args[0] == "install")
     Console.WriteLine();
 }
 
+if (args[0] != "run" && args[0] != "install")
+{
+    Console.WriteLine($"Unknown command: {args[0]}");
+    Console.WriteLine();
+    PrintHelp();
+    return 1;
+}
+
 // Run the agent (works for both post-install and standalone 'run')
-var hostArgs = args.Length > 0 && (args[0] == "install" || args[0] == "run")
-    ? args[1..] // strip subcommand so the host doesn't choke on it
-    : args;
+var hostArgs = args[1..]; // strip subcommand so the host doesn't choke on it
 
 var builder = Host.CreateApplicationBuilder(hostArgs);
 
@@ -55,6 +67,22 @@ builder.Services.AddHostedService<AgentWorker>();
 var host = builder.Build();
 host.Run();
 return 0;
+
+static void PrintHelp()
+{
+    Console.WriteLine("ClaudeNest Agent");
+    Console.WriteLine();
+    Console.WriteLine("Usage: claudenest-agent <command> [args]");
+    Console.WriteLine();
+    Console.WriteLine("Commands:");
+    Console.WriteLine("  install       Pair with backend and register as a background service");
+    Console.WriteLine("  uninstall     Stop and remove the background service");
+    Console.WriteLine("  add-path      Add directories to the agent");
+    Console.WriteLine("  remove-path   Remove directories from the agent");
+    Console.WriteLine("  list-paths    Show configured directories");
+    Console.WriteLine("  run           Run the agent in the foreground");
+    Console.WriteLine("  help          Show this help message");
+}
 
 static async Task<int> HandleInstallAsync(string[] args)
 {
