@@ -205,15 +205,13 @@ function FolderNode({
 
         {expanded ? (
           <FolderOpen
-            className="h-4 w-4 shrink-0"
+            className={folderColor ? "h-4 w-4 shrink-0" : "h-4 w-4 shrink-0 text-nest-500"}
             style={folderColor ? { color: folderColor } : undefined}
-            {...(!folderColor ? { className: "h-4 w-4 shrink-0 text-nest-500" } : {})}
           />
         ) : (
           <Folder
-            className="h-4 w-4 shrink-0"
+            className={folderColor ? "h-4 w-4 shrink-0" : "h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500"}
             style={folderColor ? { color: folderColor } : undefined}
-            {...(!folderColor ? { className: "h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" } : {})}
           />
         )}
 
