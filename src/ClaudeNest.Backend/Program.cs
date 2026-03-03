@@ -6,6 +6,7 @@ using ClaudeNest.Backend.Hubs;
 using ClaudeNest.Backend.Stripe;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -134,6 +135,16 @@ else
 }
 
 app.MapDefaultEndpoints();
+
+// Forward headers from reverse proxy (Cloudflare Tunnel / Azure Container Apps)
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
+};
+// Trust all proxies — traffic arrives via Cloudflare Tunnel on a private VNet
+forwardedHeadersOptions.KnownIPNetworks.Clear();
+forwardedHeadersOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedHeadersOptions);
 
 app.UseCors();
 app.UseAuthentication();
