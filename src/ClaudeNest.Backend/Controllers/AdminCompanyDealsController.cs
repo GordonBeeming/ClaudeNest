@@ -89,6 +89,7 @@ public class AdminCompanyDealsController(NestDbContext db, TimeProvider timeProv
 
         // Cancel accounts with matching email domain that don't have a Stripe subscription
         var affectedAccounts = await db.Users
+            .AsTracking()
             .Where(u => u.Email.EndsWith("@" + deal.Domain))
             .Select(u => u.Account)
             .Where(a => a.StripeSubscriptionId == null)

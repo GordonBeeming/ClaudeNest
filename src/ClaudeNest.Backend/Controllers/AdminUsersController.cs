@@ -103,6 +103,7 @@ public class AdminUsersController(NestDbContext db, IStripeService stripeService
     public async Task<IActionResult> CancelSubscription(Guid id)
     {
         var user = await db.Users
+            .AsTracking()
             .Include(u => u.Account)
                 .ThenInclude(a => a!.Plan)
             .Include(u => u.Account)
@@ -146,6 +147,7 @@ public class AdminUsersController(NestDbContext db, IStripeService stripeService
             return BadRequest("You cannot change your own admin status");
 
         var user = await db.Users
+            .AsTracking()
             .Include(u => u.Account)
                 .ThenInclude(a => a!.Plan)
             .Include(u => u.Account)
@@ -165,6 +167,7 @@ public class AdminUsersController(NestDbContext db, IStripeService stripeService
     public async Task<IActionResult> GiveCoupon(Guid id, [FromBody] GiveCouponRequest request)
     {
         var user = await db.Users
+            .AsTracking()
             .Include(u => u.Account)
                 .ThenInclude(a => a!.Plan)
             .Include(u => u.Account)
@@ -174,7 +177,7 @@ public class AdminUsersController(NestDbContext db, IStripeService stripeService
 
         if (user is null) return NotFound();
 
-        var coupon = await db.Coupons.Include(c => c.Plan).FirstOrDefaultAsync(c => c.Id == request.CouponId);
+        var coupon = await db.Coupons.AsTracking().Include(c => c.Plan).FirstOrDefaultAsync(c => c.Id == request.CouponId);
         if (coupon is null) return BadRequest("Coupon not found");
         if (!coupon.IsActive) return BadRequest("Coupon is not active");
 

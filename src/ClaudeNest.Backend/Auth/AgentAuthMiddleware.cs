@@ -36,6 +36,7 @@ public class AgentAuthMiddleware(RequestDelegate next)
         var secretHash = SHA256.HashData(Encoding.UTF8.GetBytes(agentSecretHeader));
 
         var credential = await db.AgentCredentials
+            .AsTracking()
             .Where(c => c.AgentId == agentId && c.RevokedAt == null)
             .FirstOrDefaultAsync();
 

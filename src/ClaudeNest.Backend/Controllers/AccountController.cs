@@ -77,6 +77,7 @@ public class AccountController(NestDbContext db, IStripeService stripeService, T
         if (auth0UserId is null) return Unauthorized();
 
         var user = await db.Users
+            .AsTracking()
             .Include(u => u.Account)
             .FirstOrDefaultAsync(u => u.Auth0UserId == auth0UserId);
 
@@ -95,6 +96,7 @@ public class AccountController(NestDbContext db, IStripeService stripeService, T
         if (auth0UserId is null) return Unauthorized();
 
         var user = await db.Users
+            .AsTracking()
             .Include(u => u.Account)
             .FirstOrDefaultAsync(u => u.Auth0UserId == auth0UserId);
 

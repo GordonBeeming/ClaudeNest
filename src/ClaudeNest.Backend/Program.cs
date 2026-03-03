@@ -20,7 +20,10 @@ if (!builder.Environment.IsDevelopment() && !builder.Environment.IsProduction())
 builder.AddServiceDefaults();
 
 // Database
-builder.AddSqlServerDbContext<NestDbContext>("nestdb");
+builder.AddSqlServerDbContext<NestDbContext>("nestdb", configureDbContextOptions: options =>
+{
+    options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+});
 
 // Authentication — dev bypass or Auth0 JWT
 if (builder.Environment.IsDevelopment())
@@ -112,7 +115,7 @@ else
     {
         var stripeDb = stripeScope.ServiceProvider.GetRequiredService<NestDbContext>();
         var stripeOpts = stripeScope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<StripeOptions>>().Value;
-        var plans = await stripeDb.Plans.Where(p => p.IsActive && p.StripePriceId == null).ToListAsync();
+        var plans = await stripeDb.Plans.AsTracking().Where(p => p.IsActive && p.StripePriceId == null).ToListAsync();
         foreach (var plan in plans)
         {
             try

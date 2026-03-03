@@ -183,6 +183,7 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext,
 
         // Revoke all active credentials
         var activeCredentials = await db.AgentCredentials
+            .AsTracking()
             .Where(c => c.AgentId == agentId && c.RevokedAt == null)
             .ToListAsync();
 
@@ -220,6 +221,7 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext,
         if (auth0UserId is null) return Unauthorized();
 
         var agent = await db.Agents
+            .AsTracking()
             .Include(a => a.Credentials)
             .Include(a => a.Sessions)
             .Where(a => a.Id == agentId && a.Account.Users.Any(u => u.Auth0UserId == auth0UserId))
@@ -268,6 +270,7 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext,
         if (agent is null) return NotFound();
 
         var credential = await db.AgentCredentials
+            .AsTracking()
             .FirstOrDefaultAsync(c => c.Id == credentialId && c.AgentId == agentId);
 
         if (credential is null) return NotFound();

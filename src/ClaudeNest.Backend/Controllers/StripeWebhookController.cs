@@ -122,7 +122,7 @@ public class StripeWebhookController(NestDbContext db, IStripeService stripeServ
         var customerId = session.CustomerId;
         if (customerId is null) return;
 
-        var account = await db.Accounts.FirstOrDefaultAsync(a => a.StripeCustomerId == customerId);
+        var account = await db.Accounts.AsTracking().FirstOrDefaultAsync(a => a.StripeCustomerId == customerId);
         if (account is null) return;
 
         var subscriptionId = session.SubscriptionId;
@@ -188,14 +188,14 @@ public class StripeWebhookController(NestDbContext db, IStripeService stripeServ
         if (subscription is null) return;
 
         var subscriptionId = subscription.Id;
-        var account = await db.Accounts.FirstOrDefaultAsync(a => a.StripeSubscriptionId == subscriptionId);
+        var account = await db.Accounts.AsTracking().FirstOrDefaultAsync(a => a.StripeSubscriptionId == subscriptionId);
 
         // For subscription.created, the account won't have StripeSubscriptionId yet — look up by customer
         if (account is null)
         {
             var customerId = subscription.CustomerId;
             if (customerId is null) return;
-            account = await db.Accounts.FirstOrDefaultAsync(a => a.StripeCustomerId == customerId);
+            account = await db.Accounts.AsTracking().FirstOrDefaultAsync(a => a.StripeCustomerId == customerId);
             if (account is null) return;
 
             account.StripeSubscriptionId = subscriptionId;
@@ -225,7 +225,7 @@ public class StripeWebhookController(NestDbContext db, IStripeService stripeServ
         if (subscription is null) return;
 
         var subscriptionId = subscription.Id;
-        var account = await db.Accounts.FirstOrDefaultAsync(a => a.StripeSubscriptionId == subscriptionId);
+        var account = await db.Accounts.AsTracking().FirstOrDefaultAsync(a => a.StripeSubscriptionId == subscriptionId);
         if (account is null) return;
 
         account.SubscriptionStatus = SubscriptionStatus.Cancelled;
@@ -303,7 +303,7 @@ public class StripeWebhookController(NestDbContext db, IStripeService stripeServ
         var customerId = invoice.CustomerId;
         if (customerId is null) return;
 
-        var account = await db.Accounts.FirstOrDefaultAsync(a => a.StripeCustomerId == customerId);
+        var account = await db.Accounts.AsTracking().FirstOrDefaultAsync(a => a.StripeCustomerId == customerId);
         if (account is null) return;
 
         account.SubscriptionStatus = SubscriptionStatus.PastDue;

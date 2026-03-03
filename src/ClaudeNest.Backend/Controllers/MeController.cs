@@ -28,6 +28,7 @@ public class MeController(NestDbContext db, IConfiguration config, IHttpClientFa
         var name = User.FindFirst("name")?.Value;
 
         var user = await db.Users
+            .AsTracking()
             .Include(u => u.Account)
             .ThenInclude(a => a.Plan)
             .FirstOrDefaultAsync(u => u.Auth0UserId == auth0UserId);
@@ -87,9 +88,29 @@ public class MeController(NestDbContext db, IConfiguration config, IHttpClientFa
 
             // Reload with includes
             user = await db.Users
+                .AsTracking()
                 .Include(u => u.Account)
                 .ThenInclude(a => a.Plan)
                 .FirstAsync(u => u.Id == user.Id);
+        }
+
+        // Admins get the highest plan auto-assigned — no need to buy
+        if (user.IsAdmin)
+        {
+            var maxPlan = await db.Plans
+                .Where(p => p.IsActive)
+                .OrderByDescending(p => p.SortOrder)
+                .FirstOrDefaultAsync();
+
+            if (maxPlan is not null && user.Account.PlanId != maxPlan.Id)
+            {
+                user.Account.PlanId = maxPlan.Id;
+                user.Account.SubscriptionStatus = SubscriptionStatus.Active;
+                await db.SaveChangesAsync();
+
+                // Reload to pick up the new plan navigation
+                await db.Entry(user.Account).Reference(a => a.Plan).LoadAsync();
+            }
         }
 
         var account2 = user.Account;

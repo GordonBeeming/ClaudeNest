@@ -73,6 +73,7 @@ public class PairingController(NestDbContext db, TimeProvider timeProvider) : Co
 
         var now = timeProvider.GetUtcNow();
         var pairingToken = await db.PairingTokens
+            .AsTracking()
             .Include(t => t.User)
             .ThenInclude(u => u.Account)
             .ThenInclude(a => a.Plan)

@@ -19,6 +19,7 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
 
         // Update agent status in DB
         var agent = await db.Agents
+            .AsTracking()
             .Include(a => a.Account)
             .ThenInclude(a => a!.Plan)
             .FirstOrDefaultAsync(a => a.Id == agentInfo.AgentId);
