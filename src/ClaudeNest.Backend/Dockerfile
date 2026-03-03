@@ -7,22 +7,21 @@
 # === Build stage ===
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 
-# Aspire workload is needed for the ServiceDefaults project
-RUN dotnet workload install aspire
-
-WORKDIR /src
+WORKDIR /build
 
 # Copy only .csproj files first to maximise restore layer caching
-COPY src/ClaudeNest.Backend/ClaudeNest.Backend.csproj src/ClaudeNest.Backend/
-COPY src/ClaudeNest.Shared/ClaudeNest.Shared.csproj src/ClaudeNest.Shared/
-COPY src/ClaudeNest.ServiceDefaults/ClaudeNest.ServiceDefaults.csproj src/ClaudeNest.ServiceDefaults/
+COPY src/ClaudeNest.Backend/ClaudeNest.Backend.csproj ClaudeNest.Backend/
+COPY src/ClaudeNest.Shared/ClaudeNest.Shared.csproj ClaudeNest.Shared/
+COPY src/ClaudeNest.ServiceDefaults/ClaudeNest.ServiceDefaults.csproj ClaudeNest.ServiceDefaults/
 
-RUN dotnet restore src/ClaudeNest.Backend/ClaudeNest.Backend.csproj
+RUN dotnet restore ClaudeNest.Backend/ClaudeNest.Backend.csproj
 
-# Copy full source (filtered by .dockerignore)
-COPY src/ src/
+# Copy only the .NET source directories the backend needs
+COPY src/ClaudeNest.Backend/ ClaudeNest.Backend/
+COPY src/ClaudeNest.Shared/ ClaudeNest.Shared/
+COPY src/ClaudeNest.ServiceDefaults/ ClaudeNest.ServiceDefaults/
 
-RUN dotnet publish src/ClaudeNest.Backend/ClaudeNest.Backend.csproj \
+RUN dotnet publish ClaudeNest.Backend/ClaudeNest.Backend.csproj \
     -c Release \
     -o /app/publish \
     /p:UseAppHost=false
