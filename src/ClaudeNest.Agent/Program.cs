@@ -7,6 +7,12 @@ using ClaudeNest.Agent.Config;
 using ClaudeNest.Agent.Serialization;
 using ClaudeNest.Agent.ServiceInstall;
 
+// Handle '--add-path' flag: add directories to an existing agent
+if (args.Any(a => a == "--add-path"))
+{
+    return await HandleAddPathCommand(args);
+}
+
 // Handle 'uninstall' subcommand
 if (args.Length > 0 && args[0] == "uninstall")
 {
@@ -389,6 +395,9 @@ static async Task<int> InstallBinaryAndService(AgentCredentials credentials, str
         }
     }
 
+    // Add ~/.claudenest/bin to PATH
+    EnsureBinOnPath(binDir);
+
     // Determine service type
     var serviceType = isWindows ? "windows-task" :
         RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "macos-launchagent" :
@@ -484,6 +493,84 @@ static async Task RunClaudeTrustAsync(string directoryPath)
     catch (Exception ex)
     {
         Console.Error.WriteLine($"   ⚠️  Could not run claude: {ex.Message}");
+    }
+}
+
+static async Task<int> HandleAddPathCommand(string[] args)
+{
+    List<string> paths = [];
+    for (var i = 0; i < args.Length; i++)
+    {
+        if (args[i] == "--add-path" && i + 1 < args.Length)
+        {
+            paths.Add(Path.GetFullPath(args[++i]));
+        }
+    }
+
+    var credentials = ConfigLoader.LoadCredentials();
+    var config = ConfigLoader.LoadConfig();
+
+    if (credentials is null || config.AllowedPaths.Count == 0)
+    {
+        Console.Error.WriteLine("No agent installed. Run 'claudenest-agent install' first.");
+        return 1;
+    }
+
+    return await HandleAddPathsAsync(credentials, config, paths);
+}
+
+static void EnsureBinOnPath(string binDir)
+{
+    var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
+    if (pathEnv.Contains(binDir, StringComparison.OrdinalIgnoreCase))
+    {
+        return; // Already on PATH
+    }
+
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+    {
+        try
+        {
+            var userPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User) ?? "";
+            if (userPath.Contains(binDir, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            var newPath = string.IsNullOrEmpty(userPath) ? binDir : $"{binDir};{userPath}";
+            Environment.SetEnvironmentVariable("PATH", newPath, EnvironmentVariableTarget.User);
+            Console.WriteLine($"Added {binDir} to user PATH.");
+            Console.WriteLine("Open a new terminal for 'claudenest-agent' to be available.");
+        }
+        catch
+        {
+            Console.WriteLine($"Note: Add the following to your user PATH to use 'claudenest-agent' directly:");
+            Console.WriteLine($"  {binDir}");
+        }
+    }
+    else
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var shell = Environment.GetEnvironmentVariable("SHELL") ?? "";
+        var profilePath = shell.EndsWith("zsh")
+            ? Path.Combine(home, ".zshrc")
+            : Path.Combine(home, ".bashrc");
+
+        var exportLine = """export PATH="$HOME/.claudenest/bin:$PATH" """.Trim();
+
+        try
+        {
+            var contents = File.Exists(profilePath) ? File.ReadAllText(profilePath) : "";
+            if (contents.Contains(".claudenest/bin"))
+                return;
+
+            File.AppendAllText(profilePath, $"\n# ClaudeNest Agent\n{exportLine}\n");
+            Console.WriteLine($"Added ~/.claudenest/bin to PATH in {Path.GetFileName(profilePath)}");
+            Console.WriteLine($"Run 'source {profilePath}' or open a new terminal for 'claudenest-agent' to be available.");
+        }
+        catch
+        {
+            Console.WriteLine($"Note: Add ~/.claudenest/bin to your PATH to use 'claudenest-agent' directly:");
+            Console.WriteLine($"  echo '{exportLine}' >> {profilePath}");
+        }
     }
 }
 

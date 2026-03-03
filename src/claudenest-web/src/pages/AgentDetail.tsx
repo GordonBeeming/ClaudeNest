@@ -7,6 +7,7 @@ import {
   Activity,
   Trash2,
   Download,
+  Terminal,
 } from "lucide-react";
 import { getAgent, deleteAgent, triggerAgentUpdate } from "../api";
 import type { Agent, SessionStatus } from "../types";
@@ -372,6 +373,15 @@ export function AgentDetail() {
                 Agent must be online to browse folders.
               </p>
             )}
+          </div>
+          <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-800/50">
+            <div className="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+              <Terminal className="h-3.5 w-3.5" />
+              Add more folders to this agent
+            </div>
+            <code className="mt-1.5 block text-xs text-gray-600 dark:text-gray-300">
+              claudenest-agent --add-path /path/to/directory
+            </code>
           </div>
         </div>
       </div>
