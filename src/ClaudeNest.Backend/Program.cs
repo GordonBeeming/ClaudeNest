@@ -111,20 +111,6 @@ else
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
     await db.Database.MigrateAsync();
-
-    // Promote configured email to admin (bootstrap first admin without DB access)
-    var adminSeedEmail = app.Configuration["AdminSeedEmail"];
-    if (!string.IsNullOrWhiteSpace(adminSeedEmail))
-    {
-        var user = await db.Users.AsTracking()
-            .FirstOrDefaultAsync(u => u.Email == adminSeedEmail && !u.IsAdmin);
-        if (user is not null)
-        {
-            user.IsAdmin = true;
-            await db.SaveChangesAsync();
-            app.Logger.LogInformation("Promoted {Email} to admin via AdminSeedEmail", adminSeedEmail);
-        }
-    }
 }
 
 // Sync plans to Stripe if configured (creates products + prices)

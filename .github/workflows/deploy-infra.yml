@@ -42,6 +42,5 @@ jobs:
               stripePublishableKey='${{ secrets.STRIPE_PUBLISHABLE_KEY }}' \
               stripeCurrency='${{ vars.STRIPE_CURRENCY }}' \
               cloudflareTunnelToken='${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}' \
-              adminSeedEmail='${{ secrets.ADMIN_SEED_EMAIL }}' \
               backendImageTag='latest' \
               frontendImageTag='latest'
