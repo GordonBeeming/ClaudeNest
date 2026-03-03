@@ -247,6 +247,11 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext,
             }
         }
 
+        var folderPreferences = await db.UserFolderPreferences
+            .AsTracking()
+            .Where(p => p.AgentId == agentId)
+            .ToListAsync();
+        db.UserFolderPreferences.RemoveRange(folderPreferences);
         db.Sessions.RemoveRange(agent.Sessions);
         db.AgentCredentials.RemoveRange(agent.Credentials);
         db.Agents.Remove(agent);

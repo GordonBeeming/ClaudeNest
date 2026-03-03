@@ -78,6 +78,14 @@ export interface UserProfile {
   account: AccountInfo | null;
 }
 
+export interface FolderPreference {
+  id: string;
+  path: string;
+  isFavorite: boolean;
+  color: string | null;
+  updatedAt: string;
+}
+
 export interface AgentCredentialInfo {
   id: string;
   issuedAt: string;

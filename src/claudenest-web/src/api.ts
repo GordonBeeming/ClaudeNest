@@ -1,4 +1,4 @@
-import type { AdminUserInfo, Agent, UserProfile, PlanInfo, AccountInfo, AgentCredentialInfo, CouponValidation, LedgerEntry, PaginatedResult, CouponInfo, CompanyDeal, DiscountType } from "./types";
+import type { AdminUserInfo, Agent, UserProfile, PlanInfo, AccountInfo, AgentCredentialInfo, CouponValidation, LedgerEntry, PaginatedResult, CouponInfo, CompanyDeal, DiscountType, FolderPreference } from "./types";
 
 const BASE = "/api";
 
@@ -95,6 +95,23 @@ export async function deleteAgent(agentId: string): Promise<void> {
 
 export async function triggerAgentUpdate(agentId: string): Promise<{ message: string }> {
   return apiFetch<{ message: string }>(`/agents/${agentId}/update`, { method: "POST" });
+}
+
+export async function getFolderPreferences(agentId: string): Promise<FolderPreference[]> {
+  return apiFetch<FolderPreference[]>(`/agents/${agentId}/folder-preferences`);
+}
+
+export async function upsertFolderPreference(agentId: string, data: { path: string; isFavorite: boolean; color: string | null }): Promise<FolderPreference> {
+  return apiFetch<FolderPreference>(`/agents/${agentId}/folder-preferences`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteFolderPreference(agentId: string, preferenceId: string): Promise<void> {
+  return apiFetch<void>(`/agents/${agentId}/folder-preferences/${preferenceId}`, {
+    method: "DELETE",
+  });
 }
 
 export async function revokeAgentCredential(agentId: string, credentialId: string): Promise<void> {

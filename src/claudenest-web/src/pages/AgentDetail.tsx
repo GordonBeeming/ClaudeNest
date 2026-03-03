@@ -8,11 +8,14 @@ import {
   Trash2,
   Download,
   Terminal,
+  Star,
+  Eye,
+  EyeOff,
 } from "lucide-react";
-import { getAgent, deleteAgent, triggerAgentUpdate } from "../api";
-import type { Agent, SessionStatus } from "../types";
+import { getAgent, deleteAgent, triggerAgentUpdate, getFolderPreferences, upsertFolderPreference, deleteFolderPreference } from "../api";
+import type { Agent, SessionStatus, FolderPreference } from "../types";
 import { OnlineBadge } from "../components/StatusBadge";
-import { FolderTree } from "../components/FolderTree";
+import { FolderTree, FavoriteFolderTree } from "../components/FolderTree";
 import { SessionPanel } from "../components/SessionPanel";
 import { useSignalRContext } from "../contexts/SignalRContext";
 import { useUserContext } from "../contexts/UserContext";
@@ -30,6 +33,8 @@ export function AgentDetail() {
   const [removing, setRemoving] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
   const [updatingAgent, setUpdatingAgent] = useState(false);
+  const [preferences, setPreferences] = useState<Map<string, FolderPreference>>(new Map());
+  const [showAllFolders, setShowAllFolders] = useState(true);
 
   const {
     subscribeToAgent,
@@ -56,9 +61,20 @@ export function AgentDetail() {
     }
   }, [agentId]);
 
+  const fetchPreferences = useCallback(async () => {
+    if (!agentId) return;
+    try {
+      const prefs = await getFolderPreferences(agentId);
+      setPreferences(new Map(prefs.map((p) => [p.path, p])));
+    } catch {
+      // Non-critical — preferences just won't load
+    }
+  }, [agentId]);
+
   useEffect(() => {
     fetchAgent();
-  }, [fetchAgent]);
+    fetchPreferences();
+  }, [fetchAgent, fetchPreferences]);
 
   // Subscribe to agent updates via SignalR
   useEffect(() => {
@@ -155,6 +171,14 @@ export function AgentDetail() {
   );
   const atSessionLimit = accountMaxSessions > 0 && activeSessions.length >= accountMaxSessions;
 
+  const favoritePaths = useMemo(
+    () =>
+      Array.from(preferences.values())
+        .filter((p) => p.isFavorite)
+        .map((p) => p.path),
+    [preferences],
+  );
+
   const handleLaunchSession = useCallback(
     (path: string) => {
       if (!agentId) return;
@@ -178,6 +202,114 @@ export function AgentDetail() {
       ]);
     },
     [agentId, requestStartSession],
+  );
+
+  const handleToggleFavorite = useCallback(
+    async (path: string, currentPref: FolderPreference | undefined) => {
+      if (!agentId) return;
+      const isFavorite = !currentPref?.isFavorite;
+
+      // If removing favorite and no color, delete the preference entirely
+      if (!isFavorite && !currentPref?.color) {
+        if (currentPref) {
+          // Optimistic update
+          setPreferences((prev) => {
+            const next = new Map(prev);
+            next.delete(path);
+            return next;
+          });
+          try {
+            await deleteFolderPreference(agentId, currentPref.id);
+          } catch {
+            // Revert on error
+            fetchPreferences();
+          }
+        }
+        return;
+      }
+
+      // Optimistic update
+      const optimisticPref: FolderPreference = {
+        id: currentPref?.id ?? "",
+        path,
+        isFavorite,
+        color: currentPref?.color ?? null,
+        updatedAt: new Date().toISOString(),
+      };
+      setPreferences((prev) => {
+        const next = new Map(prev);
+        next.set(path, optimisticPref);
+        return next;
+      });
+
+      try {
+        const result = await upsertFolderPreference(agentId, {
+          path,
+          isFavorite,
+          color: currentPref?.color ?? null,
+        });
+        setPreferences((prev) => {
+          const next = new Map(prev);
+          next.set(path, result);
+          return next;
+        });
+      } catch {
+        fetchPreferences();
+      }
+    },
+    [agentId, fetchPreferences],
+  );
+
+  const handleSetColor = useCallback(
+    async (path: string, color: string | null, currentPref: FolderPreference | undefined) => {
+      if (!agentId) return;
+
+      // If removing color and not favorite, delete the preference
+      if (!color && !currentPref?.isFavorite) {
+        if (currentPref) {
+          setPreferences((prev) => {
+            const next = new Map(prev);
+            next.delete(path);
+            return next;
+          });
+          try {
+            await deleteFolderPreference(agentId, currentPref.id);
+          } catch {
+            fetchPreferences();
+          }
+        }
+        return;
+      }
+
+      const optimisticPref: FolderPreference = {
+        id: currentPref?.id ?? "",
+        path,
+        isFavorite: currentPref?.isFavorite ?? false,
+        color,
+        updatedAt: new Date().toISOString(),
+      };
+      setPreferences((prev) => {
+        const next = new Map(prev);
+        next.set(path, optimisticPref);
+        return next;
+      });
+
+      try {
+        const result = await upsertFolderPreference(agentId, {
+          path,
+          isFavorite: currentPref?.isFavorite ?? false,
+          color,
+        });
+        setPreferences((prev) => {
+          const next = new Map(prev);
+          next.set(path, result);
+          return next;
+        });
+      } catch {
+        fetchPreferences();
+      }
+    },
+    [agentId, fetchPreferences],
   );
 
   const handleTriggerUpdate = useCallback(async () => {
@@ -353,27 +485,83 @@ export function AgentDetail() {
 
         {/* Folder Browser */}
         <div>
-          <div className="mb-4 flex items-center gap-2">
-            <FolderTreeIcon className="h-4 w-4 text-nest-500" />
-            <h2 className="font-medium text-gray-900 dark:text-white">
-              Browse Folders
-            </h2>
-          </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
-            {agent.isOnline ? (
-              <FolderTree
-                agentId={agent.id}
-                allowedPaths={agent.allowedPaths}
-                activeSessionPaths={activeSessionPaths}
-                atSessionLimit={atSessionLimit}
-                onLaunch={handleLaunchSession}
-              />
-            ) : (
-              <p className="py-8 text-center text-sm text-gray-400">
-                Agent must be online to browse folders.
-              </p>
-            )}
-          </div>
+          {/* Favorites Section */}
+          {favoritePaths.length > 0 && (
+            <div className="mb-6">
+              <div className="mb-4 flex items-center gap-2">
+                <Star className="h-4 w-4 text-amber-400" />
+                <h2 className="font-medium text-gray-900 dark:text-white">
+                  Favorites
+                </h2>
+                <button
+                  onClick={() => setShowAllFolders((s) => !s)}
+                  className="ml-auto flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  title={showAllFolders ? "Show favorites only" : "Show all folders"}
+                >
+                  {showAllFolders ? (
+                    <>
+                      <EyeOff className="h-3.5 w-3.5" />
+                      Show favorites only
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="h-3.5 w-3.5" />
+                      Show all folders
+                    </>
+                  )}
+                </button>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-white p-3 dark:border-amber-800/50 dark:bg-gray-900">
+                {agent.isOnline ? (
+                  <FavoriteFolderTree
+                    agentId={agent.id}
+                    favoritePaths={favoritePaths}
+                    activeSessionPaths={activeSessionPaths}
+                    atSessionLimit={atSessionLimit}
+                    onLaunch={handleLaunchSession}
+                    preferences={preferences}
+                    onToggleFavorite={handleToggleFavorite}
+                    onSetColor={handleSetColor}
+                  />
+                ) : (
+                  <p className="py-8 text-center text-sm text-gray-400">
+                    Agent must be online to browse folders.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* All Folders Section */}
+          {showAllFolders && (
+            <>
+              <div className="mb-4 flex items-center gap-2">
+                <FolderTreeIcon className="h-4 w-4 text-nest-500" />
+                <h2 className="font-medium text-gray-900 dark:text-white">
+                  {favoritePaths.length > 0 ? "All Folders" : "Browse Folders"}
+                </h2>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
+                {agent.isOnline ? (
+                  <FolderTree
+                    agentId={agent.id}
+                    allowedPaths={agent.allowedPaths}
+                    activeSessionPaths={activeSessionPaths}
+                    atSessionLimit={atSessionLimit}
+                    onLaunch={handleLaunchSession}
+                    preferences={preferences}
+                    onToggleFavorite={handleToggleFavorite}
+                    onSetColor={handleSetColor}
+                  />
+                ) : (
+                  <p className="py-8 text-center text-sm text-gray-400">
+                    Agent must be online to browse folders.
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+
           <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-800/50">
             <div className="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
               <Terminal className="h-3.5 w-3.5" />

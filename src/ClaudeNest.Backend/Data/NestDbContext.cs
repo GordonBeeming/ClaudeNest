@@ -17,6 +17,7 @@ public class NestDbContext(DbContextOptions<NestDbContext> options) : DbContext(
     public DbSet<Coupon> Coupons => Set<Coupon>();
     public DbSet<CouponRedemption> CouponRedemptions => Set<CouponRedemption>();
     public DbSet<CompanyDeal> CompanyDeals => Set<CompanyDeal>();
+    public DbSet<UserFolderPreference> UserFolderPreferences => Set<UserFolderPreference>();
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
