@@ -121,6 +121,14 @@ export function useSignalR() {
     [],
   );
 
+  const onAgentUpdateStatus = useCallback(
+    (handler: (report: { agentId: string; status: string; error?: string; newVersion?: string }) => void) => {
+      connectionRef.current?.on("AgentUpdateStatus", handler);
+      return () => connectionRef.current?.off("AgentUpdateStatus", handler);
+    },
+    [],
+  );
+
   return {
     connected,
     subscribeToAgent,
@@ -133,5 +141,6 @@ export function useSignalR() {
     onDirectoryListingResult,
     onAllSessionsUpdated,
     onAgentRemoved,
+    onAgentUpdateStatus,
   };
 }

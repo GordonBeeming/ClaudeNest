@@ -6,8 +6,9 @@ import {
   FolderTree as FolderTreeIcon,
   Activity,
   Trash2,
+  Download,
 } from "lucide-react";
-import { getAgent, deleteAgent } from "../api";
+import { getAgent, deleteAgent, triggerAgentUpdate } from "../api";
 import type { Agent, SessionStatus } from "../types";
 import { OnlineBadge } from "../components/StatusBadge";
 import { FolderTree } from "../components/FolderTree";
@@ -26,6 +27,8 @@ export function AgentDetail() {
   const [error, setError] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<string | null>(null);
+  const [updatingAgent, setUpdatingAgent] = useState(false);
 
   const {
     subscribeToAgent,
@@ -35,6 +38,7 @@ export function AgentDetail() {
     onSessionStatusChanged,
     onAllSessionsUpdated,
     onAgentStatusChanged,
+    onAgentUpdateStatus,
     connected,
   } = useSignalRContext();
 
@@ -89,12 +93,39 @@ export function AgentDetail() {
       setAgent((prev) => (prev ? { ...prev, isOnline } : prev));
     });
 
+    const unsub4 = onAgentUpdateStatus(
+      (report: {
+        agentId: string;
+        status: string;
+        error?: string;
+        newVersion?: string;
+      }) => {
+        if (report.agentId !== agentId) return;
+        if (report.status === "completed") {
+          setUpdateStatus(
+            `Updated to v${report.newVersion ?? "unknown"}`,
+          );
+          setUpdatingAgent(false);
+          // Refresh agent data to get new version
+          fetchAgent();
+        } else if (report.status === "failed") {
+          setUpdateStatus(`Update failed: ${report.error ?? "unknown error"}`);
+          setUpdatingAgent(false);
+        } else {
+          setUpdateStatus(
+            `Update status: ${report.status}${report.newVersion ? ` (v${report.newVersion})` : ""}`,
+          );
+        }
+      },
+    );
+
     return () => {
       unsub1();
       unsub2();
       unsub3();
+      unsub4();
     };
-  }, [agentId, onSessionStatusChanged, onAllSessionsUpdated, onAgentStatusChanged]);
+  }, [agentId, onSessionStatusChanged, onAllSessionsUpdated, onAgentStatusChanged, onAgentUpdateStatus, fetchAgent]);
 
   // Compute paths that have an active session (for blocking duplicate launches)
   const activeSessionPaths = useMemo(
@@ -147,6 +178,21 @@ export function AgentDetail() {
     },
     [agentId, requestStartSession],
   );
+
+  const handleTriggerUpdate = useCallback(async () => {
+    if (!agentId) return;
+    setUpdatingAgent(true);
+    setUpdateStatus("Triggering update...");
+    try {
+      await triggerAgentUpdate(agentId);
+      setUpdateStatus("Update triggered. Downloading...");
+    } catch (e) {
+      setUpdateStatus(
+        e instanceof Error ? `Update failed: ${e.message}` : "Update failed",
+      );
+      setUpdatingAgent(false);
+    }
+  }, [agentId]);
 
   const handleRemoveAgent = useCallback(async () => {
     if (!agentId) return;
@@ -214,8 +260,24 @@ export function AgentDetail() {
             {agent.hostname}
             {agent.os ? ` \u00b7 ${agent.os}` : ""}
           </p>
+          {agent.version && (
+            <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+              Version {agent.version}
+              {agent.architecture ? ` (${agent.architecture})` : ""}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
+          {agent.isOnline && agent.version && (
+            <button
+              onClick={handleTriggerUpdate}
+              disabled={updatingAgent}
+              className="flex items-center gap-1.5 rounded-lg border border-nest-200 px-3 py-1.5 text-sm font-medium text-nest-600 hover:bg-nest-50 disabled:opacity-50 dark:border-nest-800 dark:text-nest-400 dark:hover:bg-nest-950/30"
+            >
+              <Download className="h-4 w-4" />
+              {updatingAgent ? "Updating..." : "Update"}
+            </button>
+          )}
           {confirmRemove ? (
             <div className="flex items-center gap-2">
               <span className="text-sm text-red-600 dark:text-red-400">
@@ -254,6 +316,20 @@ export function AgentDetail() {
         <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
           This agent is currently offline. Session controls are unavailable
           until it reconnects.
+        </div>
+      )}
+
+      {updateStatus && (
+        <div
+          className={`mt-4 rounded-lg border px-4 py-3 text-sm ${
+            updateStatus.includes("failed")
+              ? "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
+              : updateStatus.includes("Updated to")
+                ? "border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950/30 dark:text-green-300"
+                : "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-300"
+          }`}
+        >
+          {updateStatus}
         </div>
       )}
 

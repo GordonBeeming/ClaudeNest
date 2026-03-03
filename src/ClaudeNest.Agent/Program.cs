@@ -5,15 +5,23 @@ using System.Text.Json;
 using ClaudeNest.Agent;
 using ClaudeNest.Agent.Config;
 using ClaudeNest.Agent.Serialization;
+using ClaudeNest.Agent.ServiceInstall;
 
-// Handle 'install' subcommand: pair then run interactively
+// Handle 'uninstall' subcommand
+if (args.Length > 0 && args[0] == "uninstall")
+{
+    return await HandleUninstallAsync();
+}
+
+// Handle 'install' subcommand: pair, register service, and optionally run interactively
 if (args.Length > 0 && args[0] == "install")
 {
     var exitCode = await HandleInstallAsync(args);
-    if (exitCode != 0)
-        return exitCode;
+    if (exitCode >= 0)
+        return exitCode; // 0 = service installed and running, >0 = error
 
-    Console.WriteLine("Starting agent...");
+    // exitCode == -1 means service registration failed, fall through to run in foreground
+    Console.WriteLine("Starting agent in foreground...");
     Console.WriteLine("Press Ctrl+C to stop.");
     Console.WriteLine();
 }
@@ -232,19 +240,87 @@ static async Task<int> HandleInstallAsync(string[] args)
     };
     ConfigLoader.SaveCredentials(credentials);
 
-    // Save config with name and allowed paths
+    // Copy binary to ~/.claudenest/bin/
+    var claudeNestDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest");
+    var binDir = Path.Combine(claudeNestDir, "bin");
+    Directory.CreateDirectory(binDir);
+
+    var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+    var binaryName = isWindows ? "claudenest-agent.exe" : "claudenest-agent";
+    var installedBinaryPath = Path.Combine(binDir, binaryName);
+    var currentBinaryPath = Environment.ProcessPath;
+
+    if (currentBinaryPath is not null && currentBinaryPath != installedBinaryPath)
+    {
+        Console.WriteLine($"Copying agent binary to {installedBinaryPath}...");
+        File.Copy(currentBinaryPath, installedBinaryPath, overwrite: true);
+
+        // Make executable on Unix
+        if (!isWindows)
+        {
+            File.SetUnixFileMode(installedBinaryPath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        }
+    }
+
+    // Determine service type
+    var serviceType = isWindows ? "windows-task" :
+        RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "macos-launchagent" :
+        "linux-systemd";
+
+    // Save config with name, allowed paths, and service info
     var nestConfig = new NestConfig
     {
         Name = agentName,
-        AllowedPaths = paths
+        AllowedPaths = paths,
+        InstalledBinaryPath = installedBinaryPath,
+        ServiceType = serviceType
     };
     ConfigLoader.SaveConfig(nestConfig);
+
+    // Register and start as a service
+    Console.WriteLine("Registering as a background service...");
+    using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+    var serviceLogger = loggerFactory.CreateLogger("ServiceInstaller");
+
+    try
+    {
+        var installer = ServiceInstallerFactory.Create(serviceLogger);
+        var installResult = await installer.InstallAsync(installedBinaryPath);
+        if (installResult)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"Agent paired and installed successfully!");
+            Console.WriteLine($"  Agent ID:    {credentials.AgentId}");
+            Console.WriteLine($"  Name:        {agentName}");
+            Console.WriteLine($"  Binary:      {installedBinaryPath}");
+            Console.WriteLine($"  Service:     {serviceType}");
+            Console.WriteLine($"  Paths:       {string.Join(", ", paths)}");
+            Console.WriteLine($"  Config:      {claudeNestDir}/");
+            Console.WriteLine();
+            Console.WriteLine("The agent is now running as a background service and will start automatically on login.");
+            Console.WriteLine("To uninstall, run: claudenest-agent uninstall");
+            // Exit without running the agent inline since the service is now managing it
+            return 0;
+        }
+        else
+        {
+            Console.WriteLine("Warning: Service registration failed. The agent will run in the foreground.");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Warning: Could not register as a service ({ex.Message}). The agent will run in the foreground.");
+    }
 
     Console.WriteLine($"Agent paired successfully! Agent ID: {credentials.AgentId}");
     Console.WriteLine($"Name: {agentName}");
     Console.WriteLine($"Allowed paths: {string.Join(", ", paths)}");
     Console.WriteLine("Configuration saved to ~/.claudenest/");
-    return 0;
+    // Return -1 to signal: pairing succeeded but service registration failed, run in foreground
+    return -1;
 }
 
 static async Task RunClaudeTrustAsync(string directoryPath)
@@ -285,6 +361,73 @@ static async Task RunClaudeTrustAsync(string directoryPath)
     {
         Console.Error.WriteLine($"   ⚠️  Could not run claude: {ex.Message}");
     }
+}
+
+static async Task<int> HandleUninstallAsync()
+{
+    Console.WriteLine("Uninstalling ClaudeNest Agent...");
+
+    using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+    var serviceLogger = loggerFactory.CreateLogger("ServiceInstaller");
+
+    try
+    {
+        var installer = ServiceInstallerFactory.Create(serviceLogger);
+        if (installer.IsInstalled())
+        {
+            Console.WriteLine("Stopping and removing background service...");
+            await installer.UninstallAsync();
+            Console.WriteLine("Service removed.");
+        }
+        else
+        {
+            Console.WriteLine("No background service found.");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Warning: Could not remove service: {ex.Message}");
+    }
+
+    // Remove installed binary
+    var claudeNestDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest");
+    var binDir = Path.Combine(claudeNestDir, "bin");
+    if (Directory.Exists(binDir))
+    {
+        try
+        {
+            Directory.Delete(binDir, true);
+            Console.WriteLine("Removed installed binary.");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Warning: Could not remove binary directory: {ex.Message}");
+        }
+    }
+
+    // Clean up updates directory
+    var updatesDir = Path.Combine(claudeNestDir, "updates");
+    if (Directory.Exists(updatesDir))
+    {
+        try
+        {
+            Directory.Delete(updatesDir, true);
+        }
+        catch { /* best effort */ }
+    }
+
+    // Remove update marker
+    var markerPath = Path.Combine(claudeNestDir, "update-pending");
+    if (File.Exists(markerPath))
+    {
+        try { File.Delete(markerPath); } catch { /* best effort */ }
+    }
+
+    Console.WriteLine();
+    Console.WriteLine("Agent uninstalled successfully.");
+    Console.WriteLine("Note: Configuration and credentials are preserved in ~/.claudenest/");
+    Console.WriteLine("To remove all data, delete the ~/.claudenest/ directory.");
+    return 0;
 }
 
 static Task<bool> IsWorkspaceUntrustedAsync(string directoryPath)

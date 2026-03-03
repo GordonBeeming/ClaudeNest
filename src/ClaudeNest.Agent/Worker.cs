@@ -13,6 +13,7 @@ public class AgentWorker(
 {
     private SignalRConnectionManager? _connectionManager;
     private SessionManager? _sessionManager;
+    private AgentUpdater? _updater;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -29,11 +30,13 @@ public class AgentWorker(
 
         var directoryBrowser = new DirectoryBrowser(config);
 
-        var sessionManagerLogger = LoggerFactory.Create(b => b.AddConsole())
-            .CreateLogger<SessionManager>();
+        var logFactory = LoggerFactory.Create(b => b.AddConsole());
+        var sessionManagerLogger = logFactory.CreateLogger<SessionManager>();
         _sessionManager = new SessionManager(config, directoryBrowser, credentials.AgentId, sessionManagerLogger);
 
-        _connectionManager = new SignalRConnectionManager(credentials, LoggerFactory.Create(b => b.AddConsole())
+        _updater = new AgentUpdater(logFactory.CreateLogger<AgentUpdater>(), lifetime);
+
+        _connectionManager = new SignalRConnectionManager(credentials, logFactory
             .CreateLogger<SignalRConnectionManager>());
 
         // Wire up session status changes to SignalR
@@ -100,6 +103,19 @@ public class AgentWorker(
             return Task.CompletedTask;
         };
 
+        // Wire up auto-update handlers
+        _connectionManager.OnUpdateAvailable += async notification =>
+        {
+            logger.LogInformation("Update available: v{Version}", notification.LatestVersion);
+            await HandleUpdateAsync(notification, credentials.AgentId, stoppingToken);
+        };
+
+        _connectionManager.OnTriggerUpdate += async notification =>
+        {
+            logger.LogInformation("Update triggered from backend: v{Version}", notification.LatestVersion);
+            await HandleUpdateAsync(notification, credentials.AgentId, stoppingToken);
+        };
+
         // Connect to the backend
         try
         {
@@ -113,7 +129,7 @@ public class AgentWorker(
         }
 
         // Register with the hub
-        await _connectionManager.RegisterAgentAsync(new AgentInfo
+        var registrationResult = await _connectionManager.RegisterAgentAsync(new AgentInfo
         {
             AgentId = credentials.AgentId,
             Name = config.Name,
@@ -121,10 +137,52 @@ public class AgentWorker(
             OS = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows"
                 : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "macos"
                 : "linux",
+            Version = typeof(AgentWorker).Assembly.GetName().Version?.ToString() ?? "0.0.0",
+            Architecture = RuntimeInformation.ProcessArchitecture.ToString(),
             AllowedPaths = config.AllowedPaths
         });
 
         logger.LogInformation("Agent registered successfully");
+
+        // Check if we just completed an update
+        var updateCompleted = await _updater.CheckAndCompleteUpdateAsync();
+        if (updateCompleted)
+        {
+            var currentVersion = typeof(AgentWorker).Assembly.GetName().Version?.ToString() ?? "0.0.0";
+            logger.LogInformation("Update to version {Version} completed successfully", currentVersion);
+            try
+            {
+                await _connectionManager.SendUpdateStatusAsync(new UpdateStatusReport
+                {
+                    AgentId = credentials.AgentId,
+                    Status = "completed",
+                    NewVersion = currentVersion
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to report update completion status");
+            }
+        }
+
+        // Check if an update is available based on registration result
+        if (registrationResult?.LatestAgentVersion is not null && registrationResult.UpdateDownloadUrl is not null)
+        {
+            var currentVersion = typeof(AgentWorker).Assembly.GetName().Version?.ToString() ?? "0.0.0";
+            if (currentVersion != registrationResult.LatestAgentVersion &&
+                !string.IsNullOrEmpty(registrationResult.UpdateDownloadUrl))
+            {
+                logger.LogInformation(
+                    "Newer version available: {LatestVersion} (current: {CurrentVersion}). Auto-updating...",
+                    registrationResult.LatestAgentVersion, currentVersion);
+
+                _ = HandleUpdateAsync(new UpdateAvailableNotification
+                {
+                    LatestVersion = registrationResult.LatestAgentVersion,
+                    DownloadUrl = registrationResult.UpdateDownloadUrl
+                }, credentials.AgentId, stoppingToken);
+            }
+        }
 
         // Report current sessions on connect
         var currentSessions = _sessionManager.GetAllSessions();
@@ -152,6 +210,52 @@ public class AgentWorker(
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Error during heartbeat/health check");
+            }
+        }
+    }
+
+    private async Task HandleUpdateAsync(UpdateAvailableNotification notification, Guid agentId, CancellationToken ct)
+    {
+        if (_updater is null || _connectionManager is null || _sessionManager is null) return;
+
+        try
+        {
+            await _connectionManager.SendUpdateStatusAsync(new UpdateStatusReport
+            {
+                AgentId = agentId,
+                Status = "downloading",
+                NewVersion = notification.LatestVersion
+            });
+
+            await _updater.UpdateAsync(
+                notification.DownloadUrl,
+                notification.LatestVersion,
+                async () => _sessionManager.StopAllSessions(),
+                ct);
+
+            await _connectionManager.SendUpdateStatusAsync(new UpdateStatusReport
+            {
+                AgentId = agentId,
+                Status = "restarting",
+                NewVersion = notification.LatestVersion
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Auto-update failed");
+            try
+            {
+                await _connectionManager.SendUpdateStatusAsync(new UpdateStatusReport
+                {
+                    AgentId = agentId,
+                    Status = "failed",
+                    Error = ex.Message,
+                    NewVersion = notification.LatestVersion
+                });
+            }
+            catch
+            {
+                // Best effort
             }
         }
     }

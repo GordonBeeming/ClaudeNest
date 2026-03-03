@@ -6,5 +6,7 @@ public sealed class AgentInfo
     public string? Name { get; init; }
     public required string Hostname { get; init; }
     public required string OS { get; init; }
+    public string? Version { get; init; }
+    public string? Architecture { get; init; }
     public List<string> AllowedPaths { get; init; } = [];
 }

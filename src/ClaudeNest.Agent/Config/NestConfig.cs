@@ -6,4 +6,6 @@ public sealed class NestConfig
     public List<string> AllowedPaths { get; set; } = [];
     public List<string> DeniedPaths { get; set; } = [];
     public string ClaudeBinary { get; set; } = "claude";
+    public string? InstalledBinaryPath { get; set; }
+    public string? ServiceType { get; set; }
 }

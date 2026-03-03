@@ -14,6 +14,8 @@ public class AgentConfiguration : IEntityTypeConfiguration<Agent>
         entity.Property(e => e.Hostname).HasMaxLength(256);
         entity.Property(e => e.OS).HasMaxLength(64);
         entity.Property(e => e.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
+        entity.Property(e => e.Version).HasMaxLength(64);
+        entity.Property(e => e.Architecture).HasMaxLength(32);
         entity.HasOne(e => e.Account).WithMany(a => a.Agents).HasForeignKey(e => e.AccountId);
     }
 }
