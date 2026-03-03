@@ -132,8 +132,8 @@ function FolderNode({
 }: FolderNodeProps) {
   const { requestDirectoryListing, onDirectoryListingResult } =
     useSignalRContext();
-  const [expanded, setExpanded] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(!!autoExpand);
+  const [loading, setLoading] = useState(!!autoExpand);
   const [children, setChildren] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hovering, setHovering] = useState(false);
@@ -157,14 +157,11 @@ function FolderNode({
     setExpanded((e) => !e);
   }, [expanded, children, agentId, path, requestDirectoryListing]);
 
-  // Auto-expand on mount when autoExpand is true
+  // Auto-expand: trigger directory listing on mount
   useEffect(() => {
     if (autoExpand && !autoExpandTriggered.current) {
       autoExpandTriggered.current = true;
-      setLoading(true);
-      setError(null);
       requestDirectoryListing(agentId, path);
-      setExpanded(true);
     }
   }, [autoExpand, agentId, path, requestDirectoryListing]);
 
