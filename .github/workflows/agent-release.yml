@@ -25,7 +25,7 @@ jobs:
       - name: Determine version
         id: version
         run: |
-          VERSION="$(date -u +'%Y.%m').${{ github.run_id }}"
+          VERSION="$(date -u +'%Y.%-m.%-d').${{ github.run_number }}"
           TAG="agent-v${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "tag=${TAG}" >> $GITHUB_OUTPUT

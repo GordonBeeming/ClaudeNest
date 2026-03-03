@@ -27,7 +27,7 @@ jobs:
       - name: Determine version
         id: version
         run: |
-          VERSION="$(date -u +'%Y.%m').${{ github.run_id }}"
+          VERSION="$(date -u +'%Y.%-m.%-d').${{ github.run_number }}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
   build-backend:
