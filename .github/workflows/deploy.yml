@@ -15,10 +15,25 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  VERSION: '' # set dynamically in determine-version job
+
 jobs:
+  determine-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Determine version
+        id: version
+        run: |
+          VERSION="$(date -u +'%Y.%m').${{ github.run_id }}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
   build-backend:
     runs-on: ubuntu-latest
     environment: prod
+    needs: determine-version
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -36,7 +51,7 @@ jobs:
         run: |
           docker build \
             -f src/ClaudeNest.Backend/Dockerfile \
-            -t ${{ vars.ACR_REGISTRY_NAME }}.azurecr.io/claudenest-backend:${{ github.sha }} \
+            -t ${{ vars.ACR_REGISTRY_NAME }}.azurecr.io/claudenest-backend:${{ needs.determine-version.outputs.version }} \
             -t ${{ vars.ACR_REGISTRY_NAME }}.azurecr.io/claudenest-backend:latest \
             .
           docker push ${{ vars.ACR_REGISTRY_NAME }}.azurecr.io/claudenest-backend --all-tags
@@ -44,6 +59,7 @@ jobs:
   build-frontend:
     runs-on: ubuntu-latest
     environment: prod
+    needs: determine-version
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -64,7 +80,7 @@ jobs:
             --build-arg VITE_AUTH0_DOMAIN=${{ secrets.AUTH0_DOMAIN }} \
             --build-arg VITE_AUTH0_CLIENT_ID=${{ secrets.AUTH0_CLIENT_ID }} \
             --build-arg VITE_AUTH0_AUDIENCE=${{ secrets.AUTH0_AUDIENCE }} \
-            -t ${{ vars.ACR_REGISTRY_NAME }}.azurecr.io/claudenest-frontend:${{ github.sha }} \
+            -t ${{ vars.ACR_REGISTRY_NAME }}.azurecr.io/claudenest-frontend:${{ needs.determine-version.outputs.version }} \
             -t ${{ vars.ACR_REGISTRY_NAME }}.azurecr.io/claudenest-frontend:latest \
             .
           docker push ${{ vars.ACR_REGISTRY_NAME }}.azurecr.io/claudenest-frontend --all-tags
@@ -72,7 +88,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: prod
-    needs: [build-backend, build-frontend]
+    needs: [determine-version, build-backend, build-frontend]
     steps:
       - name: Azure Login
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
@@ -86,11 +102,11 @@ jobs:
           az containerapp update \
             --name ${{ vars.BACKEND_CONTAINER_APP }} \
             --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
-            --image ${{ vars.ACR_REGISTRY_NAME }}.azurecr.io/claudenest-backend:${{ github.sha }}
+            --image ${{ vars.ACR_REGISTRY_NAME }}.azurecr.io/claudenest-backend:${{ needs.determine-version.outputs.version }}
 
       - name: Update frontend Container App
         run: |
           az containerapp update \
             --name ${{ vars.FRONTEND_CONTAINER_APP }} \
             --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
-            --image ${{ vars.ACR_REGISTRY_NAME }}.azurecr.io/claudenest-frontend:${{ github.sha }}
+            --image ${{ vars.ACR_REGISTRY_NAME }}.azurecr.io/claudenest-frontend:${{ needs.determine-version.outputs.version }}

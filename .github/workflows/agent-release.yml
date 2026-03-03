@@ -21,17 +21,11 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          fetch-depth: 0
 
       - name: Determine version
         id: version
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          MAJOR_MINOR=$(cat src/ClaudeNest.Agent/version.txt | tr -d '[:space:]')
-          EXISTING=$(gh release list --json tagName -q "[.[] | select(.tagName | startswith(\"agent-v${MAJOR_MINOR}.\"))] | length")
-          VERSION="${MAJOR_MINOR}.${EXISTING}"
+          VERSION="$(date -u +'%Y.%m').${{ github.run_id }}"
           TAG="agent-v${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
