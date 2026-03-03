@@ -24,6 +24,16 @@ param stripeSecretKey string
 @secure()
 param stripeWebhookSecret string
 
+@description('The Cloudflare Tunnel token to store as a secret')
+@secure()
+param cloudflareTunnelToken string
+
+@description('The resource ID of the Private Endpoints subnet')
+param peSubnetId string
+
+@description('The resource ID of the Key Vault private DNS zone')
+param kvDnsZoneId string
+
 var kvName = 'kv-claudenest-${environmentName}'
 
 // Key Vault Secrets User role definition ID
@@ -44,6 +54,10 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enabledForDeployment: false
     enabledForDiskEncryption: false
     enabledForTemplateDeployment: false
+    networkAcls: {
+      bypass: 'AzureServices'
+      defaultAction: 'Deny'
+    }
   }
 }
 
@@ -87,6 +101,50 @@ resource stripeWebhookSecretSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01
   name: 'stripe-webhook-secret'
   properties: {
     value: stripeWebhookSecret
+  }
+}
+
+resource cloudflareTunnelTokenSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'cloudflare-tunnel-token'
+  properties: {
+    value: cloudflareTunnelToken
+  }
+}
+
+resource privateEndpoint 'Microsoft.Network/privateEndpoints@2024-01-01' = {
+  name: 'pe-kv-${environmentName}'
+  location: location
+  properties: {
+    subnet: {
+      id: peSubnetId
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'pe-kv-${environmentName}'
+        properties: {
+          privateLinkServiceId: keyVault.id
+          groupIds: [
+            'vault'
+          ]
+        }
+      }
+    ]
+  }
+}
+
+resource dnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-01-01' = {
+  parent: privateEndpoint
+  name: 'kvDnsZoneGroup'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'kv'
+        properties: {
+          privateDnsZoneId: kvDnsZoneId
+        }
+      }
+    ]
   }
 }
 

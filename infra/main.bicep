@@ -11,10 +11,6 @@ param environmentName string
 @description('Azure region for all resources')
 param location string = resourceGroup().location
 
-@description('The administrator password for the SQL Server')
-@secure()
-param sqlAdminPassword string
-
 @description('The Auth0 authority URL (e.g., https://your-tenant.auth0.com/)')
 @secure()
 param auth0Authority string
@@ -51,8 +47,24 @@ param frontendImageTag string = 'latest'
 @description('The latest agent version advertised to agents')
 param agentLatestVersion string = '1.0.0'
 
+@description('The Cloudflare Tunnel token')
+@secure()
+param cloudflareTunnelToken string
+
 // ============================================================================
-// Module 1: Managed Identity
+// Module 1: VNet
+// ============================================================================
+
+module vnet 'modules/vnet.bicep' = {
+  name: 'vnet'
+  params: {
+    environmentName: environmentName
+    location: location
+  }
+}
+
+// ============================================================================
+// Module 2: Managed Identity
 // ============================================================================
 
 module managedIdentity 'modules/managed-identity.bicep' = {
@@ -64,7 +76,18 @@ module managedIdentity 'modules/managed-identity.bicep' = {
 }
 
 // ============================================================================
-// Module 2: SQL Server (needed before Key Vault for connection string)
+// Module 3: Private DNS Zones (depends on VNet)
+// ============================================================================
+
+module privateDnsZones 'modules/private-dns-zones.bicep' = {
+  name: 'private-dns-zones'
+  params: {
+    vnetId: vnet.outputs.vnetId
+  }
+}
+
+// ============================================================================
+// Module 4: SQL Server (depends on Identity, VNet, DNS Zones)
 // ============================================================================
 
 module sqlServer 'modules/sql-server.bicep' = {
@@ -72,12 +95,16 @@ module sqlServer 'modules/sql-server.bicep' = {
   params: {
     environmentName: environmentName
     location: location
-    sqlAdminPassword: sqlAdminPassword
+    identityPrincipalId: managedIdentity.outputs.identityPrincipalId
+    identityClientId: managedIdentity.outputs.identityClientId
+    managedIdentityId: managedIdentity.outputs.identityId
+    peSubnetId: vnet.outputs.peSubnetId
+    sqlDnsZoneId: privateDnsZones.outputs.sqlDnsZoneId
   }
 }
 
 // ============================================================================
-// Module 3: Key Vault (depends on Identity + SQL)
+// Module 5: Key Vault (depends on Identity, SQL, VNet, DNS Zones)
 // ============================================================================
 
 module keyVault 'modules/key-vault.bicep' = {
@@ -90,11 +117,14 @@ module keyVault 'modules/key-vault.bicep' = {
     auth0Authority: auth0Authority
     stripeSecretKey: stripeSecretKey
     stripeWebhookSecret: stripeWebhookSecret
+    cloudflareTunnelToken: cloudflareTunnelToken
+    peSubnetId: vnet.outputs.peSubnetId
+    kvDnsZoneId: privateDnsZones.outputs.kvDnsZoneId
   }
 }
 
 // ============================================================================
-// Module 4: Container Registry (depends on Identity)
+// Module 6: Container Registry (depends on Identity)
 // ============================================================================
 
 module containerRegistry 'modules/container-registry.bicep' = {
@@ -107,7 +137,7 @@ module containerRegistry 'modules/container-registry.bicep' = {
 }
 
 // ============================================================================
-// Module 5: Container Apps Environment
+// Module 7: Container Apps Environment (depends on VNet)
 // ============================================================================
 
 module containerAppsEnv 'modules/container-apps-env.bicep' = {
@@ -115,11 +145,12 @@ module containerAppsEnv 'modules/container-apps-env.bicep' = {
   params: {
     environmentName: environmentName
     location: location
+    infrastructureSubnetId: vnet.outputs.caeSubnetId
   }
 }
 
 // ============================================================================
-// Module 6: Backend Container App (depends on Env + KV + ACR)
+// Module 8: Backend Container App (depends on Env + KV + ACR + Identity)
 // ============================================================================
 
 module backendApp 'modules/container-app-backend.bicep' = {
@@ -129,6 +160,7 @@ module backendApp 'modules/container-app-backend.bicep' = {
     location: location
     containerAppsEnvironmentId: containerAppsEnv.outputs.environmentId
     managedIdentityId: managedIdentity.outputs.identityId
+    managedIdentityClientId: managedIdentity.outputs.identityClientId
     acrLoginServer: containerRegistry.outputs.loginServer
     kvName: keyVault.outputs.kvName
     auth0Audience: auth0Audience
@@ -140,7 +172,7 @@ module backendApp 'modules/container-app-backend.bicep' = {
 }
 
 // ============================================================================
-// Module 7: Frontend Container App (depends on Env + ACR)
+// Module 9: Frontend Container App (depends on Env + ACR)
 // ============================================================================
 
 module frontendApp 'modules/container-app-frontend.bicep' = {
@@ -152,6 +184,21 @@ module frontendApp 'modules/container-app-frontend.bicep' = {
     managedIdentityId: managedIdentity.outputs.identityId
     acrLoginServer: containerRegistry.outputs.loginServer
     imageTag: frontendImageTag
+  }
+}
+
+// ============================================================================
+// Module 10: Cloudflared Tunnel (depends on Env + KV)
+// ============================================================================
+
+module cloudflared 'modules/cloudflared.bicep' = {
+  name: 'cloudflared'
+  params: {
+    environmentName: environmentName
+    location: location
+    containerAppsEnvironmentId: containerAppsEnv.outputs.environmentId
+    managedIdentityId: managedIdentity.outputs.identityId
+    kvName: keyVault.outputs.kvName
   }
 }
 

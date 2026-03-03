@@ -5,25 +5,47 @@ param environmentName string
 @description('Azure region for all resources')
 param location string
 
-@description('The administrator login for the SQL Server')
-param sqlAdminLogin string = 'claudenestadmin'
+@description('The principal ID (object ID) of the managed identity')
+param identityPrincipalId string
 
-@description('The administrator password for the SQL Server')
-@secure()
-param sqlAdminPassword string
+@description('The client ID of the managed identity')
+param identityClientId string
+
+@description('The resource ID of the user-assigned managed identity')
+param managedIdentityId string
+
+@description('The resource ID of the Private Endpoints subnet')
+param peSubnetId string
+
+@description('The resource ID of the SQL private DNS zone')
+param sqlDnsZoneId string
 
 var sqlServerName = 'sql-claudenest-${environmentName}'
 var sqlDatabaseName = 'sqldb-claudenest-${environmentName}'
+var identityName = 'id-claudenest-${environmentName}'
 
 resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
   name: sqlServerName
   location: location
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${managedIdentityId}': {}
+    }
+  }
   properties: {
-    administratorLogin: sqlAdminLogin
-    administratorLoginPassword: sqlAdminPassword
+    primaryUserAssignedIdentityId: managedIdentityId
     version: '12.0'
     minimalTlsVersion: '1.2'
-    publicNetworkAccess: 'Enabled'
+    publicNetworkAccess: 'Disabled'
+    administrators: {
+      administratorType: 'ActiveDirectory'
+      principalType: 'Application'
+      login: identityName
+      sid: identityPrincipalId
+      tenantId: subscription().tenantId
+      azureADOnlyAuthentication: true
+    }
   }
 }
 
@@ -42,17 +64,43 @@ resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   }
 }
 
-// Allow Azure services to access the SQL Server
-resource firewallAllowAzure 'Microsoft.Sql/servers/firewallRules@2023-08-01-preview' = {
-  parent: sqlServer
-  name: 'AllowAzureServices'
+resource privateEndpoint 'Microsoft.Network/privateEndpoints@2024-01-01' = {
+  name: 'pe-sql-${environmentName}'
+  location: location
   properties: {
-    startIpAddress: '0.0.0.0'
-    endIpAddress: '0.0.0.0'
+    subnet: {
+      id: peSubnetId
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'pe-sql-${environmentName}'
+        properties: {
+          privateLinkServiceId: sqlServer.id
+          groupIds: [
+            'sqlServer'
+          ]
+        }
+      }
+    ]
   }
 }
 
-var connectionString = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Initial Catalog=${sqlDatabaseName};User ID=${sqlAdminLogin};Password=${sqlAdminPassword};Encrypt=True;TrustServerCertificate=False;Connection Timeout=120;'
+resource dnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-01-01' = {
+  parent: privateEndpoint
+  name: 'sqlDnsZoneGroup'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'sql'
+        properties: {
+          privateDnsZoneId: sqlDnsZoneId
+        }
+      }
+    ]
+  }
+}
+
+var connectionString = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Initial Catalog=${sqlDatabaseName};Encrypt=True;TrustServerCertificate=False;Authentication=Active Directory Default;User Id=${identityClientId};Connection Timeout=120;'
 
 @description('The fully qualified domain name of the SQL Server')
 output serverFqdn string = sqlServer.properties.fullyQualifiedDomainName

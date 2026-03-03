@@ -5,6 +5,9 @@ param environmentName string
 @description('Azure region for all resources')
 param location string
 
+@description('The resource ID of the Container Apps Environment infrastructure subnet')
+param infrastructureSubnetId string
+
 var envName = 'cae-claudenest-${environmentName}'
 var logAnalyticsName = 'log-claudenest-${environmentName}'
 
@@ -31,6 +34,16 @@ resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2024-03-01'
       }
     }
     zoneRedundant: false
+    vnetConfiguration: {
+      infrastructureSubnetId: infrastructureSubnetId
+      internal: true
+    }
+    workloadProfiles: [
+      {
+        name: 'Consumption'
+        workloadProfileType: 'Consumption'
+      }
+    ]
   }
 }
 
@@ -39,3 +52,6 @@ output environmentId string = containerAppsEnvironment.id
 
 @description('The default domain of the Container Apps Environment')
 output defaultDomain string = containerAppsEnvironment.properties.defaultDomain
+
+@description('The static IP of the Container Apps Environment')
+output staticIp string = containerAppsEnvironment.properties.staticIp

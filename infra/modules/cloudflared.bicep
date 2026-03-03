@@ -11,16 +11,12 @@ param containerAppsEnvironmentId string
 @description('The resource ID of the user-assigned managed identity')
 param managedIdentityId string
 
-@description('The login server URL of the container registry')
-param acrLoginServer string
+@description('The name of the Key Vault (for secret references)')
+param kvName string
 
-@description('The container image tag for the frontend')
-param imageTag string = 'latest'
+var appName = 'ca-claudenest-tunnel-${environmentName}'
 
-var appName = 'ca-claudenest-web-${environmentName}'
-var imageName = '${acrLoginServer}/claudenest-frontend:${imageTag}'
-
-resource frontendApp 'Microsoft.App/containerApps@2024-03-01' = {
+resource cloudflaredApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: appName
   location: location
   identity: {
@@ -33,15 +29,10 @@ resource frontendApp 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: containerAppsEnvironmentId
     configuration: {
       activeRevisionsMode: 'Single'
-      ingress: {
-        external: false
-        targetPort: 8080
-        transport: 'auto'
-        allowInsecure: false
-      }
-      registries: [
+      secrets: [
         {
-          server: acrLoginServer
+          name: 'cloudflare-tunnel-token'
+          keyVaultUrl: 'https://${kvName}.vault.azure.net/secrets/cloudflare-tunnel-token'
           identity: managedIdentityId
         }
       ]
@@ -49,24 +40,30 @@ resource frontendApp 'Microsoft.App/containerApps@2024-03-01' = {
     template: {
       containers: [
         {
-          name: 'frontend'
-          image: imageName
+          name: 'cloudflared'
+          image: 'cloudflare/cloudflared:latest'
+          command: [
+            'cloudflared'
+            'tunnel'
+            '--no-autoupdate'
+            'run'
+          ]
           resources: {
             cpu: json('0.25')
             memory: '0.5Gi'
           }
+          env: [
+            {
+              name: 'TUNNEL_TOKEN'
+              secretRef: 'cloudflare-tunnel-token'
+            }
+          ]
         }
       ]
       scale: {
-        minReplicas: 0
-        maxReplicas: 2
+        minReplicas: 1
+        maxReplicas: 1
       }
     }
   }
 }
-
-@description('The FQDN of the frontend Container App')
-output fqdn string = frontendApp.properties.configuration.ingress.fqdn
-
-@description('The URL of the frontend Container App')
-output url string = 'https://${frontendApp.properties.configuration.ingress.fqdn}'

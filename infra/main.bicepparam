@@ -4,9 +4,6 @@ param environmentName = 'dev'
 
 // param location = 'australiaeast'  // Uncomment and set to your preferred region
 
-// SQL Server admin password - REPLACE with a strong password
-param sqlAdminPassword = '<SQL_ADMIN_PASSWORD>'
-
 // Auth0 configuration
 param auth0Authority = '<AUTH0_AUTHORITY>'  // e.g., https://your-tenant.auth0.com/
 param auth0Audience = 'https://api.claudenest.com'
@@ -25,3 +22,6 @@ param frontendImageTag = 'latest'
 
 // Agent version
 param agentLatestVersion = '1.0.0'
+
+// Cloudflare Tunnel token - REPLACE with actual token from Cloudflare Zero Trust dashboard
+param cloudflareTunnelToken = '<CLOUDFLARE_TUNNEL_TOKEN>'

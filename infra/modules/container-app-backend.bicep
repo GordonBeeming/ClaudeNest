@@ -32,6 +32,9 @@ param imageTag string = 'latest'
 @description('The latest agent version')
 param agentLatestVersion string = '1.0.0'
 
+@description('The client ID of the managed identity')
+param managedIdentityClientId string
+
 var appName = 'ca-claudenest-api-${environmentName}'
 var imageName = '${acrLoginServer}/claudenest-backend:${imageTag}'
 
@@ -49,7 +52,7 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
     configuration: {
       activeRevisionsMode: 'Single'
       ingress: {
-        external: true
+        external: false
         targetPort: 8080
         transport: 'auto'
         allowInsecure: false
@@ -136,6 +139,10 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'Stripe__BillingPortalReturnUrl'
               value: 'https://claudenest.app/account'
+            }
+            {
+              name: 'AZURE_CLIENT_ID'
+              value: managedIdentityClientId
             }
             {
               name: 'ASPNETCORE_ENVIRONMENT'
