@@ -2,6 +2,13 @@ name: Agent Release
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/agent-release.yml'
+      - 'src/ClaudeNest.Agent/**'
+      - 'src/ClaudeNest.Shared/**'
+      - 'src/ClaudeNest.ServiceDefaults/**'
 
 permissions:
   contents: write
@@ -47,10 +54,10 @@ jobs:
             os: ubuntu-latest
             artifact: claudenest-agent-linux-x64
           - rid: osx-x64
-            os: macos-13
+            os: macos-latest
             artifact: claudenest-agent-osx-x64
           - rid: osx-arm64
-            os: macos-14
+            os: macos-latest
             artifact: claudenest-agent-osx-arm64
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
