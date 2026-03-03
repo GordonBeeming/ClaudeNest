@@ -56,7 +56,7 @@ const PLATFORMS: Record<Platform, PlatformConfig> = {
 
 const PLATFORM_ORDER: Platform[] = ["windows", "macos", "linux"];
 
-const RELEASE_BASE = "https://github.com/0x5ide/ClaudeNest/releases/latest/download";
+const RELEASE_BASE = "https://github.com/GordonBeeming/ClaudeNest/releases/latest/download";
 
 function detectPlatform(): Platform {
   const ua = navigator.userAgent.toLowerCase();
@@ -323,7 +323,7 @@ export function InstallAgentModal({ open, onClose }: InstallAgentModalProps) {
 
           {token && (
             <div className="space-y-3">
-              {localBuild?.available && (() => {
+              {localBuild?.available && localBuild.source === "local-build" && (() => {
                 const localDownloads = getLocalBuildRidsForPlatform(detectedPlatform, localBuild.rids);
                 if (localDownloads.length === 0) return null;
                 return (

@@ -114,6 +114,7 @@ export interface LocalBuildAvailability {
   available: boolean;
   rids: string[];
   devWorkspacePath: string | null;
+  source: string;
 }
 
 export async function getLocalBuildAvailability(): Promise<LocalBuildAvailability | null> {
