@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using ClaudeNest.Agent;
+using ClaudeNest.Agent.Auth;
 using ClaudeNest.Agent.Config;
 using ClaudeNest.Agent.Serialization;
 using ClaudeNest.Agent.ServiceInstall;
@@ -89,9 +90,8 @@ static async Task<bool> ValidateAgentCredentialsAsync(AgentCredentials credentia
 {
     try
     {
-        using var httpClient = new HttpClient();
-        httpClient.DefaultRequestHeaders.Add("X-Agent-Id", credentials.AgentId.ToString());
-        httpClient.DefaultRequestHeaders.Add("X-Agent-Secret", credentials.Secret);
+        var handler = new HmacAuthHandler(credentials.AgentId, credentials.Secret);
+        using var httpClient = new HttpClient(handler);
 
         var negotiateUrl = $"{credentials.BackendUrl.TrimEnd('/')}/hubs/nest/negotiate?negotiateVersion=1";
         var response = await httpClient.PostAsync(negotiateUrl, null);

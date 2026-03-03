@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ClaudeNest.Agent.Auth;
 using ClaudeNest.Agent.Config;
 using ClaudeNest.Agent.Serialization;
 using ClaudeNest.Shared.Messages;
@@ -40,8 +41,8 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
         _connection = new HubConnectionBuilder()
             .WithUrl(hubUrl, options =>
             {
-                options.Headers["X-Agent-Id"] = _credentials.AgentId.ToString();
-                options.Headers["X-Agent-Secret"] = _credentials.Secret;
+                options.HttpMessageHandlerFactory = innerHandler =>
+                    new HmacAuthHandler(_credentials.AgentId, _credentials.Secret, innerHandler);
             })
             .WithAutomaticReconnect()
             .AddJsonProtocol(options =>

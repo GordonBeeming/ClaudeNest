@@ -17,6 +17,7 @@ namespace ClaudeNest.Agent.Serialization;
 [JsonSerializable(typeof(SessionState))]
 [JsonSerializable(typeof(NestConfig))]
 [JsonSerializable(typeof(AgentCredentials))]
+[JsonSerializable(typeof(StoredCredentials))]
 [JsonSerializable(typeof(PairingExchangeRequest))]
 [JsonSerializable(typeof(PairingExchangeResponse))]
 [JsonSerializable(typeof(DeregisterCommand))]
