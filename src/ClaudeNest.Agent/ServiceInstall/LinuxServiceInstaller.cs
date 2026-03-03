@@ -92,6 +92,12 @@ public sealed class LinuxServiceInstaller(ILogger logger) : IServiceInstaller
 
     public bool IsInstalled() => File.Exists(ServiceFilePath);
 
+    public async Task<bool> IsRunningAsync(CancellationToken ct = default)
+    {
+        if (!IsInstalled()) return false;
+        return await RunCommandAsync("systemctl", $"--user is-active {ServiceName}", ct);
+    }
+
     private static async Task<bool> RunCommandAsync(string fileName, string arguments, CancellationToken ct)
     {
         var psi = new ProcessStartInfo

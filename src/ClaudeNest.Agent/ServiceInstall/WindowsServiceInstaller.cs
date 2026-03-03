@@ -95,6 +95,32 @@ public sealed class WindowsServiceInstaller(ILogger logger) : IServiceInstaller
         }
     }
 
+    public async Task<bool> IsRunningAsync(CancellationToken ct = default)
+    {
+        if (!IsInstalled()) return false;
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "schtasks",
+                Arguments = $"/query /tn \"{TaskName}\" /fo csv /nh",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            using var process = Process.Start(psi);
+            if (process is null) return false;
+            var output = await process.StandardOutput.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+            return process.ExitCode == 0 && output.Contains("Running", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static async Task<bool> RunCommandAsync(string fileName, string arguments, CancellationToken ct)
     {
         var psi = new ProcessStartInfo

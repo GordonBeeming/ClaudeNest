@@ -36,6 +36,16 @@ if (args[0] == "list-paths")
     return HandleListPaths();
 }
 
+if (args[0] == "status")
+{
+    return await HandleStatusAsync();
+}
+
+if (args[0] == "diag")
+{
+    return await HandleDiagAsync();
+}
+
 if (args[0] == "uninstall")
 {
     return await HandleUninstallAsync();
@@ -94,6 +104,132 @@ static async Task<bool> ValidateAgentCredentialsAsync(AgentCredentials credentia
     }
 }
 
+static async Task<int> HandleStatusAsync()
+{
+    var credentials = ConfigLoader.LoadCredentials();
+    if (credentials is null)
+    {
+        Console.WriteLine("Not installed. Run 'claudenest-agent install' to get started.");
+        return 1;
+    }
+
+    var config = ConfigLoader.LoadConfig();
+    var version = typeof(AgentWorker).Assembly.GetName().Version?.ToString() ?? "0.0.0";
+
+    Console.WriteLine($"Agent:   {credentials.AgentId}");
+    Console.WriteLine($"Version: {version}");
+    Console.WriteLine($"Backend: {credentials.BackendUrl}");
+    Console.WriteLine($"Paths:   {(config.AllowedPaths.Count > 0 ? string.Join(", ", config.AllowedPaths) : "(none)")}");
+
+    using var loggerFactory = LoggerFactory.Create(_ => { });
+    var installer = ServiceInstallerFactory.Create(loggerFactory.CreateLogger("status"));
+    var serviceInstalled = installer.IsInstalled();
+    var serviceRunning = serviceInstalled && await installer.IsRunningAsync();
+
+    Console.WriteLine($"Service: {(serviceRunning ? "running" : serviceInstalled ? "installed but not running" : "not installed")}");
+
+    return 0;
+}
+
+static async Task<int> HandleDiagAsync()
+{
+    Console.WriteLine("ClaudeNest Agent Diagnostics");
+    Console.WriteLine(new string('-', 40));
+
+    // 1. Check credentials
+    var credentials = ConfigLoader.LoadCredentials();
+    if (credentials is null)
+    {
+        Console.WriteLine("[FAIL] No credentials found. Run 'claudenest-agent install' to get started.");
+        return 1;
+    }
+    Console.WriteLine("[OK]   Credentials file found");
+    Console.WriteLine($"       Agent ID: {credentials.AgentId}");
+    Console.WriteLine($"       Backend:  {credentials.BackendUrl}");
+
+    // 2. Check config
+    var config = ConfigLoader.LoadConfig();
+    if (config.AllowedPaths.Count == 0)
+    {
+        Console.WriteLine("[WARN] No allowed paths configured. Use 'claudenest-agent add-path' to add directories.");
+    }
+    else
+    {
+        Console.WriteLine($"[OK]   {config.AllowedPaths.Count} allowed path(s) configured");
+        foreach (var path in config.AllowedPaths)
+        {
+            var exists = Directory.Exists(path);
+            Console.WriteLine($"       {(exists ? "[OK]  " : "[WARN]")} {path}{(exists ? "" : " (directory not found)")}");
+        }
+    }
+
+    // 3. Check service
+    using var loggerFactory = LoggerFactory.Create(_ => { });
+    var installer = ServiceInstallerFactory.Create(loggerFactory.CreateLogger("diag"));
+    var serviceInstalled = installer.IsInstalled();
+    var serviceRunning = serviceInstalled && await installer.IsRunningAsync();
+
+    if (serviceRunning)
+        Console.WriteLine("[OK]   Service is running");
+    else if (serviceInstalled)
+        Console.WriteLine("[FAIL] Service is installed but not running. Try 'claudenest-agent uninstall' then 'claudenest-agent install'.");
+    else
+        Console.WriteLine("[FAIL] Service is not installed");
+
+    // 4. Check backend connectivity
+    Console.Write("       Checking backend connectivity... ");
+    try
+    {
+        using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        var response = await httpClient.GetAsync(credentials.BackendUrl.TrimEnd('/'));
+        Console.WriteLine("OK");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"FAILED");
+        Console.WriteLine($"[FAIL] Cannot reach backend: {ex.Message}");
+        return 1;
+    }
+
+    // 5. Check agent credentials against backend
+    Console.Write("       Validating agent credentials... ");
+    var isValid = await ValidateAgentCredentialsAsync(credentials);
+    if (isValid)
+    {
+        Console.WriteLine("OK");
+        Console.WriteLine("[OK]   Agent credentials are valid");
+    }
+    else
+    {
+        Console.WriteLine("FAILED");
+        Console.WriteLine("[FAIL] Agent credentials are invalid. The agent may have been deleted from the web.");
+        Console.WriteLine("       Run 'claudenest-agent uninstall' then 'claudenest-agent install' to re-pair.");
+    }
+
+    // 6. Check logs
+    var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest", "logs");
+    var errorLog = Path.Combine(logDir, "agent-error.log");
+    if (File.Exists(errorLog))
+    {
+        var errorInfo = new FileInfo(errorLog);
+        if (errorInfo.Length > 0)
+        {
+            Console.WriteLine($"[INFO] Error log exists ({errorInfo.Length} bytes): {errorLog}");
+            // Show last few lines
+            var lines = await File.ReadAllLinesAsync(errorLog);
+            var lastLines = lines.TakeLast(5).ToArray();
+            if (lastLines.Length > 0)
+            {
+                Console.WriteLine("       Last error lines:");
+                foreach (var line in lastLines)
+                    Console.WriteLine($"         {line}");
+            }
+        }
+    }
+
+    return 0;
+}
+
 static void PrintHelp()
 {
     Console.WriteLine("ClaudeNest Agent");
@@ -106,6 +242,8 @@ static void PrintHelp()
     Console.WriteLine("  add-path      Add directories to the agent");
     Console.WriteLine("  remove-path   Remove directories from the agent");
     Console.WriteLine("  list-paths    Show configured directories");
+    Console.WriteLine("  status        Show agent status");
+    Console.WriteLine("  diag          Run diagnostics and check connectivity");
     Console.WriteLine("  run           Run the agent in the foreground");
     Console.WriteLine("  version       Show the agent version");
     Console.WriteLine("  help          Show this help message");

@@ -112,6 +112,31 @@ public sealed class MacOsServiceInstaller(ILogger logger) : IServiceInstaller
 
     public bool IsInstalled() => File.Exists(PlistPath);
 
+    public async Task<bool> IsRunningAsync(CancellationToken ct = default)
+    {
+        if (!IsInstalled()) return false;
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "launchctl",
+                Arguments = $"list {Label}",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            using var process = Process.Start(psi);
+            if (process is null) return false;
+            await process.WaitForExitAsync(ct);
+            return process.ExitCode == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static async Task<bool> RunCommandAsync(string fileName, string arguments, CancellationToken ct)
     {
         var psi = new ProcessStartInfo
