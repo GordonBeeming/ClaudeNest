@@ -14,6 +14,13 @@ if (args.Length == 0 || args[0] == "help")
     return 0;
 }
 
+if (args[0] == "version")
+{
+    var version = typeof(AgentWorker).Assembly.GetName().Version?.ToString() ?? "0.0.0";
+    Console.WriteLine(version);
+    return 0;
+}
+
 if (args[0] == "add-path")
 {
     return await HandleAddPathCommand(args);
@@ -100,6 +107,7 @@ static void PrintHelp()
     Console.WriteLine("  remove-path   Remove directories from the agent");
     Console.WriteLine("  list-paths    Show configured directories");
     Console.WriteLine("  run           Run the agent in the foreground");
+    Console.WriteLine("  version       Show the agent version");
     Console.WriteLine("  help          Show this help message");
 }
 
