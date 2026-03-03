@@ -1,0 +1,44 @@
+name: Deploy Infrastructure
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Bicep
+        run: |
+          az deployment group create \
+            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+            --template-file infra/main.bicep \
+            --parameters \
+              environmentName='${{ vars.ENVIRONMENT_NAME }}' \
+              auth0Authority='${{ secrets.AUTH0_AUTHORITY }}' \
+              auth0Audience='${{ secrets.AUTH0_AUDIENCE }}' \
+              auth0Domain='${{ secrets.AUTH0_DOMAIN }}' \
+              auth0ClientId='${{ secrets.AUTH0_CLIENT_ID }}' \
+              stripeSecretKey='${{ secrets.STRIPE_SECRET_KEY }}' \
+              stripeWebhookSecret='${{ secrets.STRIPE_WEBHOOK_SECRET }}' \
+              stripePublishableKey='${{ secrets.STRIPE_PUBLISHABLE_KEY }}' \
+              stripeCurrency='${{ vars.STRIPE_CURRENCY }}' \
+              cloudflareTunnelToken='${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}' \
+              backendImageTag='latest' \
+              frontendImageTag='latest'
