@@ -6,6 +6,7 @@ using ClaudeNest.Backend.Hubs;
 using ClaudeNest.Backend.Stripe;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 
@@ -70,6 +71,10 @@ if (!string.IsNullOrEmpty(stripeKey))
 
 // HTTP client for Auth0 /userinfo calls
 builder.Services.AddHttpClient();
+
+// Data Protection — persist keys to database
+builder.Services.AddDataProtection()
+    .PersistKeysToDbContext<NestDbContext>();
 
 // Controllers
 builder.Services.AddControllers()

@@ -1,9 +1,10 @@
 using ClaudeNest.Backend.Data.Entities;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClaudeNest.Backend.Data;
 
-public class NestDbContext(DbContextOptions<NestDbContext> options) : DbContext(options)
+public class NestDbContext(DbContextOptions<NestDbContext> options) : DbContext(options), IDataProtectionKeyContext
 {
     public DbSet<User> Users => Set<User>();
     public DbSet<Agent> Agents => Set<Agent>();
@@ -16,6 +17,7 @@ public class NestDbContext(DbContextOptions<NestDbContext> options) : DbContext(
     public DbSet<Coupon> Coupons => Set<Coupon>();
     public DbSet<CouponRedemption> CouponRedemptions => Set<CouponRedemption>();
     public DbSet<CompanyDeal> CompanyDeals => Set<CompanyDeal>();
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
