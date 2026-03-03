@@ -93,6 +93,10 @@ export async function deleteAgent(agentId: string): Promise<void> {
   });
 }
 
+export async function triggerAgentUpdate(agentId: string): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>(`/agents/${agentId}/update`, { method: "POST" });
+}
+
 export async function revokeAgentCredential(agentId: string, credentialId: string): Promise<void> {
   return apiFetch<void>(`/agents/${agentId}/credentials/${credentialId}`, {
     method: "DELETE",

@@ -11,6 +11,8 @@ public class Agent
     public DateTimeOffset? LastSeenAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public string? AllowedPathsJson { get; set; }
+    public string? Version { get; set; }
+    public string? Architecture { get; set; }
 
     public Account Account { get; set; } = null!;
     public ICollection<AgentCredential> Credentials { get; set; } = [];

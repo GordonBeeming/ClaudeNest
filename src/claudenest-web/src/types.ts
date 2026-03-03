@@ -47,6 +47,8 @@ export interface Agent {
   maxSessions: number;
   maxAgents: number;
   allowedPaths: string[];
+  version: string | null;
+  architecture: string | null;
 }
 
 export interface SessionStatus {

@@ -15,7 +15,7 @@ namespace ClaudeNest.Backend.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext, TimeProvider timeProvider) : ControllerBase
+public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext, TimeProvider timeProvider, IConfiguration configuration) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAgents()
@@ -37,6 +37,8 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext,
                 a.LastSeenAt,
                 a.CreatedAt,
                 a.AllowedPathsJson,
+                a.Version,
+                a.Architecture,
                 MaxSessions = a.Account.Plan != null ? a.Account.Plan.MaxSessions : 0,
                 MaxAgents = a.Account.Plan != null ? a.Account.Plan.MaxAgents : 0
             })
@@ -53,6 +55,8 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext,
             a.CreatedAt,
             a.MaxSessions,
             a.MaxAgents,
+            a.Version,
+            a.Architecture,
             AllowedPaths = a.AllowedPathsJson is not null
                 ? JsonSerializer.Deserialize<List<string>>(a.AllowedPathsJson)
                 : new List<string>()
@@ -79,6 +83,8 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext,
                 a.LastSeenAt,
                 a.CreatedAt,
                 a.AllowedPathsJson,
+                a.Version,
+                a.Architecture,
                 MaxSessions = a.Account.Plan != null ? a.Account.Plan.MaxSessions : 0,
                 MaxAgents = a.Account.Plan != null ? a.Account.Plan.MaxAgents : 0
             })
@@ -97,10 +103,42 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext,
             agent.CreatedAt,
             agent.MaxSessions,
             agent.MaxAgents,
+            agent.Version,
+            agent.Architecture,
             AllowedPaths = agent.AllowedPathsJson is not null
                 ? JsonSerializer.Deserialize<List<string>>(agent.AllowedPathsJson)
                 : new List<string>()
         });
+    }
+
+    [HttpPost("{agentId:guid}/update")]
+    public async Task<IActionResult> TriggerUpdate(Guid agentId)
+    {
+        var auth0UserId = User.FindFirst("sub")?.Value;
+        if (auth0UserId is null) return Unauthorized();
+
+        var agent = await db.Agents
+            .Where(a => a.Id == agentId && a.Account.Users.Any(u => u.Auth0UserId == auth0UserId))
+            .FirstOrDefaultAsync();
+
+        if (agent is null) return NotFound();
+
+        var version = configuration["Agent:LatestVersion"] ?? "1.0.0";
+        var notification = new UpdateAvailableNotification
+        {
+            LatestVersion = version,
+            DownloadUrl = $"https://github.com/gordonbeeming/ClaudeNest/releases/download/agent-v{version}/",
+            IsForced = false
+        };
+
+        if (NestHub.TryGetAgentConnectionId(agentId, out var connectionId))
+        {
+            await hubContext.Clients.Client(connectionId)
+                .SendAsync("TriggerUpdate", notification);
+            return Ok(new { message = "Update triggered" });
+        }
+
+        return BadRequest(new { message = "Agent is offline" });
     }
 
     [HttpGet("{agentId:guid}/credentials")]

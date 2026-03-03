@@ -29,6 +29,11 @@ export function AgentCard({ agent }: { agent: Agent }) {
             {agent.name || agent.hostname || "Unnamed Agent"}
           </h3>
           <OnlineBadge isOnline={agent.isOnline} />
+          {agent.version && (
+            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+              v{agent.version}
+            </span>
+          )}
         </div>
         <p className="mt-0.5 truncate text-sm text-gray-500 dark:text-gray-400">
           {agent.hostname ?? "Unknown host"}

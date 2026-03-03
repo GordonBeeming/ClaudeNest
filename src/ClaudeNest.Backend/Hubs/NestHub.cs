@@ -6,11 +6,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ClaudeNest.Backend.Hubs;
 
-public class NestHub(NestDbContext db, TimeProvider timeProvider) : Hub
+public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration configuration) : Hub
 {
     // --- Agent → Server ---
 
-    public async Task<object> RegisterAgent(AgentInfo agentInfo)
+    public async Task<AgentRegistrationResult> RegisterAgent(AgentInfo agentInfo)
     {
         var connectionId = Context.ConnectionId;
         AgentConnectionMap.AddOrUpdate(agentInfo.AgentId, connectionId);
@@ -30,6 +30,8 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider) : Hub
                 agent.Name = agentInfo.Name;
             agent.Hostname = agentInfo.Hostname;
             agent.OS = agentInfo.OS;
+            agent.Version = agentInfo.Version;
+            agent.Architecture = agentInfo.Architecture;
             agent.AllowedPathsJson = agentInfo.AllowedPaths.Count > 0
                 ? JsonSerializer.Serialize(agentInfo.AllowedPaths)
                 : null;
@@ -40,7 +42,15 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider) : Hub
         await Clients.Group($"user:{agentInfo.AgentId}")
             .SendAsync("AgentStatusChanged", agentInfo.AgentId, true);
 
-        return new { EffectiveMaxSessions = agent?.Account?.Plan?.MaxSessions ?? 3 };
+        var latestVersion = configuration["Agent:LatestVersion"];
+        return new AgentRegistrationResult
+        {
+            EffectiveMaxSessions = agent?.Account?.Plan?.MaxSessions ?? 3,
+            LatestAgentVersion = latestVersion,
+            UpdateDownloadUrl = latestVersion != null
+                ? $"https://github.com/gordonbeeming/ClaudeNest/releases/download/agent-v{latestVersion}/"
+                : null
+        };
     }
 
     public async Task SessionStatusChanged(SessionStatusUpdate update)
@@ -89,6 +99,12 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider) : Hub
     {
         await Clients.Group($"user:{agentId}")
             .SendAsync("AllSessionsUpdated", agentId, sessions);
+    }
+
+    public async Task UpdateStatus(UpdateStatusReport report)
+    {
+        await Clients.Group($"user:{report.AgentId}")
+            .SendAsync("AgentUpdateStatus", report);
     }
 
     public async Task Heartbeat()

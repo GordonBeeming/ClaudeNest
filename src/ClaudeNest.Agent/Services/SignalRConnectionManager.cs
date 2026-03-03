@@ -18,6 +18,8 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
     public event Func<Guid, Task>? OnStopSession;
     public event Func<Task>? OnGetSessions;
     public event Func<Task>? OnDeregister;
+    public event Func<UpdateAvailableNotification, Task>? OnUpdateAvailable;
+    public event Func<UpdateAvailableNotification, Task>? OnTriggerUpdate;
 
     public SignalRConnectionManager(AgentCredentials credentials, ILogger<SignalRConnectionManager> logger)
     {
@@ -63,6 +65,12 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
 
         _connection.On<DeregisterCommand>("Deregister", _ =>
             OnDeregister?.Invoke() ?? Task.CompletedTask);
+
+        _connection.On<UpdateAvailableNotification>("UpdateAvailable", notification =>
+            OnUpdateAvailable?.Invoke(notification) ?? Task.CompletedTask);
+
+        _connection.On<UpdateAvailableNotification>("TriggerUpdate", notification =>
+            OnTriggerUpdate?.Invoke(notification) ?? Task.CompletedTask);
 
         _connection.Reconnecting += error =>
         {
@@ -115,6 +123,12 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
     {
         if (_connection is not null)
             await _connection.InvokeAsync("Heartbeat");
+    }
+
+    public async Task SendUpdateStatusAsync(UpdateStatusReport report)
+    {
+        if (_connection is not null)
+            await _connection.InvokeAsync("UpdateStatus", report);
     }
 
     public async ValueTask DisposeAsync()
