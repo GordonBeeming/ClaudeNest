@@ -1,4 +1,4 @@
-name: Agent Release
+name: 📦 Agent Release
 
 on:
   workflow_dispatch:

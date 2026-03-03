@@ -114,7 +114,6 @@ function CopyButton({ text }: { text: string }) {
 }
 
 function PlatformSection({
-  platform: _platform,
   config,
   token,
   backendUrl,
@@ -122,7 +121,6 @@ function PlatformSection({
   onToggle,
   isDetected,
 }: {
-  platform: Platform;
   config: PlatformConfig;
   token: string;
   backendUrl: string;
@@ -239,26 +237,29 @@ export function InstallAgentModal({ open, onClose }: InstallAgentModalProps) {
 
   const backendUrl = window.location.origin;
 
-  // Auto-generate token and check local build availability when modal opens
+  // Reset state and fetch data when modal opens
   useEffect(() => {
     if (!open) return;
 
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setToken(null);
-    setLocalBuild(null);
-    setExpandedPlatforms(new Set([detectedPlatform]));
 
-    Promise.all([
-      generatePairingToken(),
-      getLocalBuildAvailability(),
-    ])
-      .then(([tokenResult, buildAvailability]) => {
-        if (!cancelled) {
-          setToken(tokenResult.token);
-          setLocalBuild(buildAvailability);
-        }
+    // Fetch token and local build availability — setState calls in .then/.catch/.finally
+    // are in async callbacks, not synchronous in the effect body.
+    Promise.resolve()
+      .then(() => {
+        if (cancelled) return;
+        setLoading(true);
+        setError(null);
+        setToken(null);
+        setLocalBuild(null);
+        setExpandedPlatforms(new Set([detectedPlatform]));
+        return Promise.all([generatePairingToken(), getLocalBuildAvailability()]);
+      })
+      .then((results) => {
+        if (cancelled || !results) return;
+        const [tokenResult, buildAvailability] = results;
+        setToken(tokenResult.token);
+        setLocalBuild(buildAvailability);
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to generate token");
@@ -398,7 +399,6 @@ export function InstallAgentModal({ open, onClose }: InstallAgentModalProps) {
               {PLATFORM_ORDER.map((p) => (
                 <PlatformSection
                   key={p}
-                  platform={p}
                   config={PLATFORMS[p]}
                   token={token}
                   backendUrl={backendUrl}
