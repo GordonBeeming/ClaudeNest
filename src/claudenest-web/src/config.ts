@@ -1,5 +1,5 @@
 /** Runtime env vars injected by Aspire via the aspireEnvPlugin in vite.config.ts */
-const aspireEnv = (window as Record<string, unknown>).__ASPIRE_ENV as
+const aspireEnv = (window as unknown as Record<string, unknown>).__ASPIRE_ENV as
   | Record<string, string>
   | undefined;
 

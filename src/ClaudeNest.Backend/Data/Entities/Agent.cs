@@ -8,8 +8,8 @@ public class Agent
     public string? Hostname { get; set; }
     public string? OS { get; set; }
     public bool IsOnline { get; set; }
-    public DateTime? LastSeenAt { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTimeOffset? LastSeenAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public string? AllowedPathsJson { get; set; }
 
     public Account Account { get; set; } = null!;

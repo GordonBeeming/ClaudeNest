@@ -7,7 +7,8 @@ public class User
     public required string Email { get; set; }
     public string? DisplayName { get; set; }
     public Guid AccountId { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public bool IsAdmin { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public Account Account { get; set; } = null!;
     public ICollection<PairingToken> PairingTokens { get; set; } = [];

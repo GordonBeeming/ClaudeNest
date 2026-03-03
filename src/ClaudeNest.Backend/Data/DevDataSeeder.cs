@@ -13,6 +13,8 @@ public static class DevDataSeeder
     public static readonly Guid DevAgentId = Guid.Parse("00000000-0000-0000-0000-000000000002");
     public static readonly Guid DevAccountId = Guid.Parse("00000000-0000-0000-0000-000000000003");
     public static readonly Guid HawkPlanId = Guid.Parse("10000000-0000-0000-0000-000000000003");
+    public static readonly Guid WrenPlanId = Guid.Parse("10000000-0000-0000-0000-000000000001");
+    public static readonly Guid WrenTrialCouponId = Guid.Parse("20000000-0000-0000-0000-000000000001");
     public const string DevAgentSecret = "dev-secret-do-not-use-in-production";
     public const string DevAuth0UserId = "dev|local-user";
 
@@ -25,12 +27,12 @@ public static class DevDataSeeder
         if (!await db.Plans.AnyAsync())
         {
             db.Plans.AddRange(
-                new Plan { Id = Guid.Parse("10000000-0000-0000-0000-000000000001"), Name = "Wren", MaxAgents = 1, MaxSessions = 2, PriceCents = 100, TrialDays = 14, IsActive = true, SortOrder = 1 },
-                new Plan { Id = Guid.Parse("10000000-0000-0000-0000-000000000002"), Name = "Robin", MaxAgents = 2, MaxSessions = 5, PriceCents = 200, TrialDays = 0, IsActive = true, SortOrder = 2 },
-                new Plan { Id = Guid.Parse("10000000-0000-0000-0000-000000000003"), Name = "Hawk", MaxAgents = 3, MaxSessions = 10, PriceCents = 500, TrialDays = 0, IsActive = true, SortOrder = 3 },
-                new Plan { Id = Guid.Parse("10000000-0000-0000-0000-000000000004"), Name = "Eagle", MaxAgents = 5, MaxSessions = 25, PriceCents = 1000, TrialDays = 0, IsActive = true, SortOrder = 4 },
-                new Plan { Id = Guid.Parse("10000000-0000-0000-0000-000000000005"), Name = "Falcon", MaxAgents = 10, MaxSessions = 50, PriceCents = 2000, TrialDays = 0, IsActive = true, SortOrder = 5 },
-                new Plan { Id = Guid.Parse("10000000-0000-0000-0000-000000000006"), Name = "Condor", MaxAgents = 25, MaxSessions = 100, PriceCents = 5000, TrialDays = 0, IsActive = true, SortOrder = 6 }
+                new Plan { Id = Guid.Parse("10000000-0000-0000-0000-000000000001"), Name = "Wren", MaxAgents = 1, MaxSessions = 2, PriceCents = 100, IsActive = true, SortOrder = 1 },
+                new Plan { Id = Guid.Parse("10000000-0000-0000-0000-000000000002"), Name = "Robin", MaxAgents = 2, MaxSessions = 5, PriceCents = 200, IsActive = true, SortOrder = 2 },
+                new Plan { Id = Guid.Parse("10000000-0000-0000-0000-000000000003"), Name = "Hawk", MaxAgents = 3, MaxSessions = 10, PriceCents = 500, IsActive = true, SortOrder = 3 },
+                new Plan { Id = Guid.Parse("10000000-0000-0000-0000-000000000004"), Name = "Eagle", MaxAgents = 5, MaxSessions = 25, PriceCents = 1000, IsActive = true, SortOrder = 4 },
+                new Plan { Id = Guid.Parse("10000000-0000-0000-0000-000000000005"), Name = "Falcon", MaxAgents = 10, MaxSessions = 50, PriceCents = 2000, IsActive = true, SortOrder = 5 },
+                new Plan { Id = Guid.Parse("10000000-0000-0000-0000-000000000006"), Name = "Condor", MaxAgents = 25, MaxSessions = 100, PriceCents = 5000, IsActive = true, SortOrder = 6 }
             );
             await db.SaveChangesAsync();
         }
@@ -57,9 +59,20 @@ public static class DevDataSeeder
                 Auth0UserId = DevAuth0UserId,
                 Email = "dev@localhost",
                 DisplayName = "Local Developer",
-                AccountId = DevAccountId
+                AccountId = DevAccountId,
+                IsAdmin = true
             });
             await db.SaveChangesAsync();
+        }
+        else
+        {
+            // Ensure existing dev user is admin
+            var devUser = await db.Users.FindAsync(DevUserId);
+            if (devUser is not null && !devUser.IsAdmin)
+            {
+                devUser.IsAdmin = true;
+                await db.SaveChangesAsync();
+            }
         }
 
         // Seed dev agent if not exists
@@ -88,6 +101,31 @@ public static class DevDataSeeder
                 SecretHash = secretHash
             });
             await db.SaveChangesAsync();
+        }
+
+        // Seed default Wren trial coupon if not exists
+        if (!await db.Coupons.AnyAsync(c => c.Id == WrenTrialCouponId))
+        {
+            db.Coupons.Add(new Coupon
+            {
+                Id = WrenTrialCouponId,
+                Code = "WREN-TRIAL",
+                PlanId = WrenPlanId,
+                FreeMonths = 1,
+                MaxRedemptions = 10000,
+                TimesRedeemed = 0,
+                IsActive = true,
+                CreatedByUserId = DevUserId
+            });
+            await db.SaveChangesAsync();
+
+            // Link the coupon as the Wren plan's default
+            var wrenPlan = await db.Plans.FindAsync(WrenPlanId);
+            if (wrenPlan is not null)
+            {
+                wrenPlan.DefaultCouponId = WrenTrialCouponId;
+                await db.SaveChangesAsync();
+            }
         }
     }
 }

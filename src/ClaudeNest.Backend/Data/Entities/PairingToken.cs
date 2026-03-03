@@ -5,8 +5,8 @@ public class PairingToken
     public Guid Id { get; set; }
     public Guid UserId { get; set; }
     public required byte[] TokenHash { get; set; }
-    public DateTime ExpiresAt { get; set; }
-    public DateTime? RedeemedAt { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset? RedeemedAt { get; set; }
 
     public User User { get; set; } = null!;
 }

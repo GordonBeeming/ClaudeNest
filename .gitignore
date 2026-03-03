@@ -50,3 +50,6 @@ Thumbs.db
 ## Frontend local env (Auth0 config, etc.)
 .env.local
 .playwright-mcp/
+
+## Stripe webhook traces (dev debugging)
+.webhook-traces/

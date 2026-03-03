@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
-import { Bird, Wifi, WifiOff, LogOut, Settings, ChevronDown } from "lucide-react";
+import { Bird, Wifi, WifiOff, LogOut, Settings, ChevronDown, Shield, UsersRound, Tag, Handshake } from "lucide-react";
 import { useSignalR } from "../hooks/useSignalR";
 import { SignalRContext } from "../contexts/SignalRContext";
 import { useUserContext } from "../contexts/UserContext";
 import { isAuth0Configured } from "../config";
+import { PastDueBanner } from "./PastDueBanner";
 
 /** Sign out button — only rendered when Auth0 is active (inside Auth0Provider). */
 function Auth0SignOutButton({ onClose }: { onClose: () => void }) {
@@ -43,7 +44,7 @@ function Auth0HeaderSignOut() {
 }
 
 function UserMenu() {
-  const { user } = useUserContext();
+  const { user, isAdmin } = useUserContext();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -103,6 +104,39 @@ function UserMenu() {
             Account
           </button>
 
+          {isAdmin && (
+            <>
+              <div className="border-t border-gray-100 dark:border-gray-800 my-1" />
+              <div className="px-4 py-1.5">
+                <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                  <Shield className="h-3 w-3" />
+                  Admin
+                </span>
+              </div>
+              <button
+                onClick={() => { setOpen(false); navigate("/admin/users"); }}
+                className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                <UsersRound className="h-4 w-4" />
+                Users
+              </button>
+              <button
+                onClick={() => { setOpen(false); navigate("/admin/coupons"); }}
+                className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                <Tag className="h-4 w-4" />
+                Coupons
+              </button>
+              <button
+                onClick={() => { setOpen(false); navigate("/admin/company-deals"); }}
+                className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                <Handshake className="h-4 w-4" />
+                Deals
+              </button>
+            </>
+          )}
+
           {isAuth0Configured && <Auth0SignOutButton onClose={() => setOpen(false)} />}
         </div>
       )}
@@ -146,6 +180,7 @@ export function Layout() {
         </header>
 
         <main className="mx-auto max-w-5xl px-4 py-6">
+          <PastDueBanner />
           <Outlet />
         </main>
       </div>

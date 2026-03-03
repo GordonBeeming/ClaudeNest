@@ -1,4 +1,4 @@
-import type { Agent, UserProfile, PlanInfo, AccountInfo, AgentCredentialInfo } from "./types";
+import type { AdminUserInfo, Agent, UserProfile, PlanInfo, AccountInfo, AgentCredentialInfo, CouponValidation, LedgerEntry, PaginatedResult, CouponInfo, CompanyDeal, DiscountType } from "./types";
 
 const BASE = "/api";
 
@@ -66,10 +66,10 @@ export async function getPlans(): Promise<PlanInfo[]> {
   return apiFetch<PlanInfo[]>("/plans");
 }
 
-export async function selectPlan(planId: string): Promise<AccountInfo> {
-  return apiFetch<AccountInfo>("/account/select-plan", {
+export async function selectPlan(planId: string, couponCode?: string): Promise<{ redirectUrl: string | null; action: string; account?: AccountInfo }> {
+  return apiFetch<{ redirectUrl: string | null; action: string; account?: AccountInfo }>("/account/select-plan", {
     method: "POST",
-    body: JSON.stringify({ planId }),
+    body: JSON.stringify({ planId, ...(couponCode ? { couponCode } : {}) }),
   });
 }
 
@@ -118,4 +118,94 @@ export async function getLocalBuildAvailability(): Promise<LocalBuildAvailabilit
   } catch {
     return null;
   }
+}
+
+export async function createBillingPortalSession(): Promise<{ url: string }> {
+  return apiFetch<{ url: string }>("/account/billing-portal", { method: "POST" });
+}
+
+export async function redeemCoupon(code: string): Promise<CouponValidation> {
+  return apiFetch<CouponValidation>("/account/redeem-coupon", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+}
+
+export async function getLedger(page = 1, pageSize = 20): Promise<PaginatedResult<LedgerEntry>> {
+  return apiFetch<PaginatedResult<LedgerEntry>>(`/account/ledger?page=${page}&pageSize=${pageSize}`);
+}
+
+// Admin APIs
+
+export async function getAdminCoupons(): Promise<CouponInfo[]> {
+  return apiFetch<CouponInfo[]>("/admin/coupons");
+}
+
+export async function createAdminCoupon(data: {
+  code: string;
+  planId: string;
+  freeMonths: number;
+  maxRedemptions: number;
+  expiresAt?: string;
+  discountType: DiscountType;
+  percentOff?: number | null;
+  amountOffCents?: number | null;
+  freeDays?: number | null;
+  durationMonths?: number | null;
+}): Promise<CouponInfo> {
+  return apiFetch<CouponInfo>("/admin/coupons", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateAdminCoupon(id: string, data: { maxRedemptions?: number; expiresAt?: string | null; isActive?: boolean }): Promise<CouponInfo> {
+  return apiFetch<CouponInfo>(`/admin/coupons/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteAdminCoupon(id: string): Promise<void> {
+  return apiFetch<void>(`/admin/coupons/${id}`, { method: "DELETE" });
+}
+
+export async function getAdminCompanyDeals(): Promise<CompanyDeal[]> {
+  return apiFetch<CompanyDeal[]>("/admin/company-deals");
+}
+
+export async function createAdminCompanyDeal(data: { domain: string; planId: string }): Promise<CompanyDeal> {
+  return apiFetch<CompanyDeal>("/admin/company-deals", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deactivateAdminCompanyDeal(id: string): Promise<void> {
+  return apiFetch<void>(`/admin/company-deals/${id}/deactivate`, { method: "POST" });
+}
+
+export async function getAdminUsers(filters?: { domain?: string; hasCoupon?: boolean; page?: number; pageSize?: number }): Promise<PaginatedResult<AdminUserInfo>> {
+  const params = new URLSearchParams();
+  if (filters?.domain) params.set("domain", filters.domain);
+  if (filters?.hasCoupon !== undefined) params.set("hasCoupon", String(filters.hasCoupon));
+  if (filters?.page) params.set("page", String(filters.page));
+  if (filters?.pageSize) params.set("pageSize", String(filters.pageSize));
+  const qs = params.toString();
+  return apiFetch<PaginatedResult<AdminUserInfo>>(`/admin/users${qs ? `?${qs}` : ""}`);
+}
+
+export async function adminCancelSubscription(userId: string): Promise<AdminUserInfo> {
+  return apiFetch<AdminUserInfo>(`/admin/users/${userId}/cancel-subscription`, { method: "POST" });
+}
+
+export async function adminToggleAdmin(userId: string): Promise<AdminUserInfo> {
+  return apiFetch<AdminUserInfo>(`/admin/users/${userId}/toggle-admin`, { method: "POST" });
+}
+
+export async function adminGiveCoupon(userId: string, couponId: string): Promise<AdminUserInfo> {
+  return apiFetch<AdminUserInfo>(`/admin/users/${userId}/give-coupon`, {
+    method: "POST",
+    body: JSON.stringify({ couponId }),
+  });
 }

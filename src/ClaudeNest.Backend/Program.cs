@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using ClaudeNest.Backend.Auth;
 using ClaudeNest.Backend.Data;
 using ClaudeNest.Backend.Hubs;
+using ClaudeNest.Backend.Stripe;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -39,6 +40,9 @@ else
 }
 builder.Services.AddAuthorization();
 
+// Time
+builder.Services.AddSingleton(TimeProvider.System);
+
 // SignalR — use camelCase + string enums to match frontend expectations
 builder.Services.AddSignalR(options =>
     {
@@ -51,11 +55,24 @@ builder.Services.AddSignalR(options =>
         options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });
 
+// Stripe
+builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection("Stripe"));
+builder.Services.AddScoped<IStripeService, StripeService>();
+var stripeKey = builder.Configuration["Stripe:SecretKey"];
+if (!string.IsNullOrEmpty(stripeKey))
+{
+    global::Stripe.StripeConfiguration.ApiKey = stripeKey;
+}
+
 // HTTP client for Auth0 /userinfo calls
 builder.Services.AddHttpClient();
 
 // Controllers
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
 
 // CORS for web frontend
 builder.Services.AddCors(options =>
@@ -85,6 +102,32 @@ else
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
     await db.Database.MigrateAsync();
+}
+
+// Sync plans to Stripe if configured (creates products + prices)
+{
+    using var stripeScope = app.Services.CreateScope();
+    var stripeSvc = stripeScope.ServiceProvider.GetRequiredService<IStripeService>();
+    if (stripeSvc.IsConfigured)
+    {
+        var stripeDb = stripeScope.ServiceProvider.GetRequiredService<NestDbContext>();
+        var stripeOpts = stripeScope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<StripeOptions>>().Value;
+        var plans = await stripeDb.Plans.Where(p => p.IsActive && p.StripePriceId == null).ToListAsync();
+        foreach (var plan in plans)
+        {
+            try
+            {
+                var priceId = await stripeSvc.GetOrCreatePriceAsync(plan.Name, plan.PriceCents, stripeOpts.Currency);
+                plan.StripePriceId = priceId;
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogWarning(ex, "Failed to sync plan {PlanName} to Stripe", plan.Name);
+            }
+        }
+        if (plans.Count > 0)
+            await stripeDb.SaveChangesAsync();
+    }
 }
 
 app.MapDefaultEndpoints();

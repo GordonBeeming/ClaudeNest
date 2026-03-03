@@ -15,7 +15,7 @@ namespace ClaudeNest.Backend.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext) : ControllerBase
+public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext, TimeProvider timeProvider) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAgents()
@@ -148,9 +148,10 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext)
             .Where(c => c.AgentId == agentId && c.RevokedAt == null)
             .ToListAsync();
 
+        var now = timeProvider.GetUtcNow();
         foreach (var cred in activeCredentials)
         {
-            cred.RevokedAt = DateTime.UtcNow;
+            cred.RevokedAt = now;
         }
 
         // Create new credential
@@ -233,7 +234,7 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext)
 
         if (credential is null) return NotFound();
 
-        credential.RevokedAt = DateTime.UtcNow;
+        credential.RevokedAt = timeProvider.GetUtcNow();
         await db.SaveChangesAsync();
 
         return NoContent();

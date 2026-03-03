@@ -29,10 +29,16 @@ namespace ClaudeNest.Backend.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<bool>("CancelAtPeriodEnd")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
+                        .HasColumnType("datetimeoffset")
                         .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<DateTimeOffset?>("CurrentPeriodEnd")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -53,6 +59,10 @@ namespace ClaudeNest.Backend.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<string>("StripePaymentMethodFingerprint")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
                     b.Property<string>("StripeSubscriptionId")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
@@ -62,14 +72,76 @@ namespace ClaudeNest.Backend.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
-                    b.Property<DateTime?>("TrialEndsAt")
-                        .HasColumnType("datetime2");
-
                     b.HasKey("Id");
 
                     b.HasIndex("PlanId");
 
                     b.ToTable("Accounts");
+                });
+
+            modelBuilder.Entity("ClaudeNest.Backend.Data.Entities.AccountLedger", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AmountCents")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("CompanyDealId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CouponId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)")
+                        .HasDefaultValue("aud");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("EntryType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid?>("PlanId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("StripeInvoiceId")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("StripePaymentIntentId")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyDealId");
+
+                    b.HasIndex("CouponId");
+
+                    b.HasIndex("PlanId");
+
+                    b.HasIndex("AccountId", "CreatedAt");
+
+                    b.ToTable("AccountLedger");
                 });
 
             modelBuilder.Entity("ClaudeNest.Backend.Data.Entities.Agent", b =>
@@ -85,9 +157,9 @@ namespace ClaudeNest.Backend.Migrations
                     b.Property<string>("AllowedPathsJson")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
+                        .HasColumnType("datetimeoffset")
                         .HasDefaultValueSql("SYSUTCDATETIME()");
 
                     b.Property<string>("Hostname")
@@ -97,8 +169,8 @@ namespace ClaudeNest.Backend.Migrations
                     b.Property<bool>("IsOnline")
                         .HasColumnType("bit");
 
-                    b.Property<DateTime?>("LastSeenAt")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset?>("LastSeenAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<string>("Name")
                         .HasMaxLength(256)
@@ -125,16 +197,16 @@ namespace ClaudeNest.Backend.Migrations
                     b.Property<Guid>("AgentId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime>("IssuedAt")
+                    b.Property<DateTimeOffset>("IssuedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
+                        .HasColumnType("datetimeoffset")
                         .HasDefaultValueSql("SYSUTCDATETIME()");
 
-                    b.Property<DateTime?>("LastUsedAt")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("datetimeoffset");
 
-                    b.Property<DateTime?>("RevokedAt")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<byte[]>("SecretHash")
                         .IsRequired()
@@ -148,6 +220,154 @@ namespace ClaudeNest.Backend.Migrations
                     b.ToTable("AgentCredentials");
                 });
 
+            modelBuilder.Entity("ClaudeNest.Backend.Data.Entities.CompanyDeal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeactivatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Domain")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("Domain")
+                        .IsUnique();
+
+                    b.HasIndex("PlanId");
+
+                    b.ToTable("CompanyDeals");
+                });
+
+            modelBuilder.Entity("ClaudeNest.Backend.Data.Entities.Coupon", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<int?>("AmountOffCents")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DiscountType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<int>("DurationMonths")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("FreeDays")
+                        .HasColumnType("int");
+
+                    b.Property<int>("FreeMonths")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MaxRedemptions")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("PercentOff")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("StripeCouponId")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<int>("TimesRedeemed")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("PlanId");
+
+                    b.ToTable("Coupons");
+                });
+
+            modelBuilder.Entity("ClaudeNest.Backend.Data.Entities.CouponRedemption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CouponId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("FreeUntil")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("RedeemedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("StripeCheckoutSessionId")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("CouponId", "AccountId")
+                        .IsUnique();
+
+                    b.ToTable("CouponRedemptions");
+                });
+
             modelBuilder.Entity("ClaudeNest.Backend.Data.Entities.PairingToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -155,11 +375,11 @@ namespace ClaudeNest.Backend.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("datetimeoffset");
 
-                    b.Property<DateTime?>("RedeemedAt")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset?>("RedeemedAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<byte[]>("TokenHash")
                         .IsRequired()
@@ -183,6 +403,9 @@ namespace ClaudeNest.Backend.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
+                    b.Property<Guid?>("DefaultCouponId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -203,14 +426,17 @@ namespace ClaudeNest.Backend.Migrations
                     b.Property<int>("SortOrder")
                         .HasColumnType("int");
 
+                    b.Property<string>("StripePriceId")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
                     b.Property<string>("StripeProductId")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
-                    b.Property<int>("TrialDays")
-                        .HasColumnType("int");
-
                     b.HasKey("Id");
+
+                    b.HasIndex("DefaultCouponId");
 
                     b.ToTable("Plans");
 
@@ -223,8 +449,7 @@ namespace ClaudeNest.Backend.Migrations
                             MaxSessions = 2,
                             Name = "Wren",
                             PriceCents = 100,
-                            SortOrder = 1,
-                            TrialDays = 14
+                            SortOrder = 1
                         },
                         new
                         {
@@ -234,8 +459,7 @@ namespace ClaudeNest.Backend.Migrations
                             MaxSessions = 5,
                             Name = "Robin",
                             PriceCents = 200,
-                            SortOrder = 2,
-                            TrialDays = 0
+                            SortOrder = 2
                         },
                         new
                         {
@@ -245,8 +469,7 @@ namespace ClaudeNest.Backend.Migrations
                             MaxSessions = 10,
                             Name = "Hawk",
                             PriceCents = 500,
-                            SortOrder = 3,
-                            TrialDays = 0
+                            SortOrder = 3
                         },
                         new
                         {
@@ -256,8 +479,7 @@ namespace ClaudeNest.Backend.Migrations
                             MaxSessions = 25,
                             Name = "Eagle",
                             PriceCents = 1000,
-                            SortOrder = 4,
-                            TrialDays = 0
+                            SortOrder = 4
                         },
                         new
                         {
@@ -267,8 +489,7 @@ namespace ClaudeNest.Backend.Migrations
                             MaxSessions = 50,
                             Name = "Falcon",
                             PriceCents = 2000,
-                            SortOrder = 5,
-                            TrialDays = 0
+                            SortOrder = 5
                         },
                         new
                         {
@@ -278,8 +499,7 @@ namespace ClaudeNest.Backend.Migrations
                             MaxSessions = 100,
                             Name = "Condor",
                             PriceCents = 5000,
-                            SortOrder = 6,
-                            TrialDays = 0
+                            SortOrder = 6
                         });
                 });
 
@@ -293,8 +513,8 @@ namespace ClaudeNest.Backend.Migrations
                     b.Property<Guid>("AgentId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime?>("EndedAt")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset?>("EndedAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<int?>("ExitCode")
                         .HasColumnType("int");
@@ -307,9 +527,9 @@ namespace ClaudeNest.Backend.Migrations
                     b.Property<int?>("Pid")
                         .HasColumnType("int");
 
-                    b.Property<DateTime>("StartedAt")
+                    b.Property<DateTimeOffset>("StartedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
+                        .HasColumnType("datetimeoffset")
                         .HasDefaultValueSql("SYSUTCDATETIME()");
 
                     b.Property<string>("State")
@@ -339,9 +559,9 @@ namespace ClaudeNest.Backend.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
+                        .HasColumnType("datetimeoffset")
                         .HasDefaultValueSql("SYSUTCDATETIME()");
 
                     b.Property<string>("DisplayName")
@@ -352,6 +572,9 @@ namespace ClaudeNest.Backend.Migrations
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
+
+                    b.Property<bool>("IsAdmin")
+                        .HasColumnType("bit");
 
                     b.HasKey("Id");
 
@@ -367,7 +590,40 @@ namespace ClaudeNest.Backend.Migrations
                 {
                     b.HasOne("ClaudeNest.Backend.Data.Entities.Plan", "Plan")
                         .WithMany()
-                        .HasForeignKey("PlanId");
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("ClaudeNest.Backend.Data.Entities.AccountLedger", b =>
+                {
+                    b.HasOne("ClaudeNest.Backend.Data.Entities.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ClaudeNest.Backend.Data.Entities.CompanyDeal", "CompanyDeal")
+                        .WithMany()
+                        .HasForeignKey("CompanyDealId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("ClaudeNest.Backend.Data.Entities.Coupon", "Coupon")
+                        .WithMany()
+                        .HasForeignKey("CouponId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("ClaudeNest.Backend.Data.Entities.Plan", "Plan")
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("Account");
+
+                    b.Navigation("CompanyDeal");
+
+                    b.Navigation("Coupon");
 
                     b.Navigation("Plan");
                 });
@@ -377,7 +633,7 @@ namespace ClaudeNest.Backend.Migrations
                     b.HasOne("ClaudeNest.Backend.Data.Entities.Account", "Account")
                         .WithMany("Agents")
                         .HasForeignKey("AccountId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("Account");
@@ -388,10 +644,67 @@ namespace ClaudeNest.Backend.Migrations
                     b.HasOne("ClaudeNest.Backend.Data.Entities.Agent", "Agent")
                         .WithMany("Credentials")
                         .HasForeignKey("AgentId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("Agent");
+                });
+
+            modelBuilder.Entity("ClaudeNest.Backend.Data.Entities.CompanyDeal", b =>
+                {
+                    b.HasOne("ClaudeNest.Backend.Data.Entities.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ClaudeNest.Backend.Data.Entities.Plan", "Plan")
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("ClaudeNest.Backend.Data.Entities.Coupon", b =>
+                {
+                    b.HasOne("ClaudeNest.Backend.Data.Entities.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ClaudeNest.Backend.Data.Entities.Plan", "Plan")
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("ClaudeNest.Backend.Data.Entities.CouponRedemption", b =>
+                {
+                    b.HasOne("ClaudeNest.Backend.Data.Entities.Account", "Account")
+                        .WithMany("CouponRedemptions")
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ClaudeNest.Backend.Data.Entities.Coupon", "Coupon")
+                        .WithMany("Redemptions")
+                        .HasForeignKey("CouponId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Coupon");
                 });
 
             modelBuilder.Entity("ClaudeNest.Backend.Data.Entities.PairingToken", b =>
@@ -399,10 +712,20 @@ namespace ClaudeNest.Backend.Migrations
                     b.HasOne("ClaudeNest.Backend.Data.Entities.User", "User")
                         .WithMany("PairingTokens")
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("ClaudeNest.Backend.Data.Entities.Plan", b =>
+                {
+                    b.HasOne("ClaudeNest.Backend.Data.Entities.Coupon", "DefaultCoupon")
+                        .WithMany()
+                        .HasForeignKey("DefaultCouponId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("DefaultCoupon");
                 });
 
             modelBuilder.Entity("ClaudeNest.Backend.Data.Entities.Session", b =>
@@ -410,7 +733,7 @@ namespace ClaudeNest.Backend.Migrations
                     b.HasOne("ClaudeNest.Backend.Data.Entities.Agent", "Agent")
                         .WithMany("Sessions")
                         .HasForeignKey("AgentId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("Agent");
@@ -421,7 +744,7 @@ namespace ClaudeNest.Backend.Migrations
                     b.HasOne("ClaudeNest.Backend.Data.Entities.Account", "Account")
                         .WithMany("Users")
                         .HasForeignKey("AccountId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("Account");
@@ -431,6 +754,8 @@ namespace ClaudeNest.Backend.Migrations
                 {
                     b.Navigation("Agents");
 
+                    b.Navigation("CouponRedemptions");
+
                     b.Navigation("Users");
                 });
 
@@ -439,6 +764,11 @@ namespace ClaudeNest.Backend.Migrations
                     b.Navigation("Credentials");
 
                     b.Navigation("Sessions");
+                });
+
+            modelBuilder.Entity("ClaudeNest.Backend.Data.Entities.Coupon", b =>
+                {
+                    b.Navigation("Redemptions");
                 });
 
             modelBuilder.Entity("ClaudeNest.Backend.Data.Entities.User", b =>

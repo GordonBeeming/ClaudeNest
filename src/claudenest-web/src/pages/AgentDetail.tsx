@@ -140,6 +140,7 @@ export function AgentDetail() {
           startedAt: new Date().toISOString(),
           endedAt: null,
           exitCode: null,
+          errorMessage: null,
         },
         ...prev,
       ]);

@@ -11,7 +11,7 @@ namespace ClaudeNest.Backend.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class PairingController(NestDbContext db) : ControllerBase
+public class PairingController(NestDbContext db, TimeProvider timeProvider) : ControllerBase
 {
     /// <summary>
     /// Web client calls this to generate a pairing token for a new agent.
@@ -35,10 +35,14 @@ public class PairingController(NestDbContext db) : ControllerBase
         if (status != SubscriptionStatus.Active && status != SubscriptionStatus.Trialing)
             return BadRequest("Active subscription required to pair agents");
 
-        if (status == SubscriptionStatus.Trialing &&
-            user.Account.TrialEndsAt.HasValue &&
-            user.Account.TrialEndsAt.Value < DateTime.UtcNow)
-            return BadRequest("Trial has expired");
+        if (status == SubscriptionStatus.Trialing)
+        {
+            var now = timeProvider.GetUtcNow();
+            var hasActiveTrial = await db.CouponRedemptions
+                .AnyAsync(cr => cr.AccountId == user.AccountId && cr.FreeUntil > now);
+            if (!hasActiveTrial)
+                return BadRequest("Trial has expired");
+        }
 
         var tokenBytes = RandomNumberGenerator.GetBytes(32);
         var token = Convert.ToBase64String(tokenBytes);
@@ -48,7 +52,7 @@ public class PairingController(NestDbContext db) : ControllerBase
         {
             UserId = user.Id,
             TokenHash = tokenHash,
-            ExpiresAt = DateTime.UtcNow.AddMinutes(10)
+            ExpiresAt = timeProvider.GetUtcNow().AddMinutes(10)
         };
 
         db.PairingTokens.Add(pairingToken);
@@ -67,11 +71,12 @@ public class PairingController(NestDbContext db) : ControllerBase
     {
         var tokenHash = SHA256.HashData(Encoding.UTF8.GetBytes(request.Token));
 
+        var now = timeProvider.GetUtcNow();
         var pairingToken = await db.PairingTokens
             .Include(t => t.User)
             .ThenInclude(u => u.Account)
             .ThenInclude(a => a.Plan)
-            .FirstOrDefaultAsync(t => t.RedeemedAt == null && t.ExpiresAt > DateTime.UtcNow);
+            .FirstOrDefaultAsync(t => t.RedeemedAt == null && t.ExpiresAt > now);
 
         if (pairingToken is null ||
             !CryptographicOperations.FixedTimeEquals(pairingToken.TokenHash, tokenHash))
@@ -87,10 +92,13 @@ public class PairingController(NestDbContext db) : ControllerBase
         if (status != SubscriptionStatus.Active && status != SubscriptionStatus.Trialing)
             return BadRequest("Active subscription required to pair agents");
 
-        if (status == SubscriptionStatus.Trialing &&
-            account.TrialEndsAt.HasValue &&
-            account.TrialEndsAt.Value < DateTime.UtcNow)
-            return BadRequest("Trial has expired");
+        if (status == SubscriptionStatus.Trialing)
+        {
+            var hasActiveTrial = await db.CouponRedemptions
+                .AnyAsync(cr => cr.AccountId == account.Id && cr.FreeUntil > now);
+            if (!hasActiveTrial)
+                return BadRequest("Trial has expired");
+        }
 
         // Enforce max agents
         var maxAgents = account.Plan?.MaxAgents ?? 0;
@@ -121,7 +129,7 @@ public class PairingController(NestDbContext db) : ControllerBase
         db.AgentCredentials.Add(credential);
 
         // Burn the pairing token
-        pairingToken.RedeemedAt = DateTime.UtcNow;
+        pairingToken.RedeemedAt = now;
 
         await db.SaveChangesAsync();
 

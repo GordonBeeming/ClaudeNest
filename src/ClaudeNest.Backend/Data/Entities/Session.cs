@@ -7,8 +7,8 @@ public class Session
     public required string Path { get; set; }
     public required string State { get; set; }
     public int? Pid { get; set; }
-    public DateTime StartedAt { get; set; } = DateTime.UtcNow;
-    public DateTime? EndedAt { get; set; }
+    public DateTimeOffset StartedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? EndedAt { get; set; }
     public int? ExitCode { get; set; }
 
     public Agent Agent { get; set; } = null!;

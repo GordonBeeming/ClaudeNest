@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ClaudeNest.Backend.Hubs;
 
-public class NestHub(NestDbContext db) : Hub
+public class NestHub(NestDbContext db, TimeProvider timeProvider) : Hub
 {
     // --- Agent → Server ---
 
@@ -25,7 +25,7 @@ public class NestHub(NestDbContext db) : Hub
         if (agent is not null)
         {
             agent.IsOnline = true;
-            agent.LastSeenAt = DateTime.UtcNow;
+            agent.LastSeenAt = timeProvider.GetUtcNow();
             if (agentInfo.Name is not null)
                 agent.Name = agentInfo.Name;
             agent.Hostname = agentInfo.Hostname;
@@ -100,7 +100,7 @@ public class NestHub(NestDbContext db) : Hub
             var agent = await db.Agents.FindAsync(agentId.Value);
             if (agent is not null)
             {
-                agent.LastSeenAt = DateTime.UtcNow;
+                agent.LastSeenAt = timeProvider.GetUtcNow();
                 await db.SaveChangesAsync();
             }
         }
@@ -144,6 +144,8 @@ public class NestHub(NestDbContext db) : Hub
 
         if (agent?.Account is not null)
         {
+            var now = timeProvider.GetUtcNow();
+
             // Check subscription status
             var status = agent.Account.SubscriptionStatus;
             if (status != Shared.Enums.SubscriptionStatus.Active && status != Shared.Enums.SubscriptionStatus.Trialing)
@@ -155,28 +157,31 @@ public class NestHub(NestDbContext db) : Hub
                         AgentId = agentId,
                         Path = path,
                         State = Shared.Enums.SessionState.Crashed,
-                        StartedAt = DateTime.UtcNow,
-                        EndedAt = DateTime.UtcNow
+                        StartedAt = now.UtcDateTime,
+                        EndedAt = now.UtcDateTime
                     });
                 return;
             }
 
-            // Check trial expiry
-            if (status == Shared.Enums.SubscriptionStatus.Trialing &&
-                agent.Account.TrialEndsAt.HasValue &&
-                agent.Account.TrialEndsAt.Value < DateTime.UtcNow)
+            // Check trial expiry via coupon redemptions
+            if (status == Shared.Enums.SubscriptionStatus.Trialing)
             {
-                await Clients.Group($"user:{agentId}")
-                    .SendAsync("SessionStatusChanged", new SessionStatusUpdate
-                    {
-                        SessionId = sessionId,
-                        AgentId = agentId,
-                        Path = path,
-                        State = Shared.Enums.SessionState.Crashed,
-                        StartedAt = DateTime.UtcNow,
-                        EndedAt = DateTime.UtcNow
-                    });
-                return;
+                var hasActiveTrial = await db.CouponRedemptions
+                    .AnyAsync(cr => cr.AccountId == agent.AccountId && cr.FreeUntil > now);
+                if (!hasActiveTrial)
+                {
+                    await Clients.Group($"user:{agentId}")
+                        .SendAsync("SessionStatusChanged", new SessionStatusUpdate
+                        {
+                            SessionId = sessionId,
+                            AgentId = agentId,
+                            Path = path,
+                            State = Shared.Enums.SessionState.Crashed,
+                            StartedAt = now.UtcDateTime,
+                            EndedAt = now.UtcDateTime
+                        });
+                    return;
+                }
             }
 
             // Check account-wide session count
@@ -194,8 +199,8 @@ public class NestHub(NestDbContext db) : Hub
                         AgentId = agentId,
                         Path = path,
                         State = Shared.Enums.SessionState.Crashed,
-                        StartedAt = DateTime.UtcNow,
-                        EndedAt = DateTime.UtcNow
+                        StartedAt = now.UtcDateTime,
+                        EndedAt = now.UtcDateTime
                     });
                 return;
             }
@@ -240,7 +245,7 @@ public class NestHub(NestDbContext db) : Hub
             if (agent is not null)
             {
                 agent.IsOnline = false;
-                agent.LastSeenAt = DateTime.UtcNow;
+                agent.LastSeenAt = timeProvider.GetUtcNow();
                 await db.SaveChangesAsync();
             }
 

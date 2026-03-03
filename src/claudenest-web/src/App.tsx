@@ -5,6 +5,9 @@ import { Dashboard } from "./pages/Dashboard";
 import { AgentDetail } from "./pages/AgentDetail";
 import { PlanSelection } from "./pages/PlanSelection";
 import { AccountPage } from "./pages/AccountPage";
+import { CouponManagement } from "./pages/admin/CouponManagement";
+import { CompanyDeals } from "./pages/admin/CompanyDeals";
+import { Users } from "./pages/admin/Users";
 import { UserProvider, useUserContext } from "./contexts/UserContext";
 import { RefreshCw, Bird } from "lucide-react";
 import { auth0Domain, auth0ClientId, auth0Audience, isAuth0Configured } from "./config";
@@ -57,8 +60,26 @@ function RequirePlan({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (user?.account?.subscriptionStatus === "None" || !user?.account?.planId) {
+  if (!user?.account?.planId) {
     return <Navigate to="/plans" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function RequireAdmin({ children }: { children: React.ReactNode }) {
+  const { isAdmin, loading } = useUserContext();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <RefreshCw className="h-5 w-5 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
@@ -92,6 +113,30 @@ function AppRoutes() {
               <RequirePlan>
                 <AgentDetail />
               </RequirePlan>
+            }
+          />
+          <Route
+            path="/admin/users"
+            element={
+              <RequireAdmin>
+                <Users />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/coupons"
+            element={
+              <RequireAdmin>
+                <CouponManagement />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/company-deals"
+            element={
+              <RequireAdmin>
+                <CompanyDeals />
+              </RequireAdmin>
             }
           />
         </Route>

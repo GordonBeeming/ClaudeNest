@@ -9,6 +9,7 @@ interface UserContextValue {
   loading: boolean;
   refreshUser: () => Promise<void>;
   updateAccount: (account: AccountInfo) => void;
+  isAdmin: boolean;
 }
 
 const UserContext = createContext<UserContextValue | null>(null);
@@ -53,8 +54,10 @@ function UserProviderInner({ children }: { children: ReactNode }) {
     setUser((prev) => prev ? { ...prev, account } : prev);
   }, []);
 
+  const isAdmin = user?.isAdmin ?? false;
+
   return (
-    <UserContext.Provider value={{ user, loading, refreshUser, updateAccount }}>
+    <UserContext.Provider value={{ user, loading, refreshUser, updateAccount, isAdmin }}>
       {children}
     </UserContext.Provider>
   );

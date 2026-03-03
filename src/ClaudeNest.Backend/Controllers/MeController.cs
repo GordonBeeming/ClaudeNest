@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using ClaudeNest.Backend.Data;
 using ClaudeNest.Backend.Data.Entities;
+using ClaudeNest.Shared.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -54,6 +55,36 @@ public class MeController(NestDbContext db, IConfiguration config, IHttpClientFa
             db.Users.Add(user);
             await db.SaveChangesAsync();
 
+            // Check if email domain matches an active company deal
+            if (email is not null)
+            {
+                var domain = email.Split('@').LastOrDefault()?.ToLowerInvariant();
+                if (domain is not null)
+                {
+                    var deal = await db.CompanyDeals
+                        .Include(d => d.Plan)
+                        .FirstOrDefaultAsync(d => d.Domain == domain && d.IsActive);
+
+                    if (deal is not null)
+                    {
+                        account.PlanId = deal.PlanId;
+                        account.SubscriptionStatus = SubscriptionStatus.Active;
+
+                        db.AccountLedger.Add(new AccountLedger
+                        {
+                            AccountId = account.Id,
+                            EntryType = LedgerEntryType.CompanyDealCredit,
+                            AmountCents = 0,
+                            Description = $"Company deal for {domain}",
+                            PlanId = deal.PlanId,
+                            CompanyDealId = deal.Id
+                        });
+
+                        await db.SaveChangesAsync();
+                    }
+                }
+            }
+
             // Reload with includes
             user = await db.Users
                 .Include(u => u.Account)
@@ -62,21 +93,33 @@ public class MeController(NestDbContext db, IConfiguration config, IHttpClientFa
         }
 
         var account2 = user.Account;
+        var meAgentCount = await db.Agents.CountAsync(a => a.AccountId == account2.Id);
+        var meActiveSessionCount = await db.Sessions.CountAsync(s =>
+            s.Agent.AccountId == account2.Id &&
+            (s.State == "Running" || s.State == "Starting" || s.State == "Requested"));
 
         return Ok(new
         {
             user.Id,
             user.Email,
             user.DisplayName,
+            user.IsAdmin,
             Account = new
             {
                 account2.Id,
+                account2.Name,
                 PlanId = account2.PlanId,
                 PlanName = account2.Plan?.Name,
                 SubscriptionStatus = account2.SubscriptionStatus.ToString(),
-                account2.TrialEndsAt,
                 MaxAgents = account2.Plan?.MaxAgents ?? 0,
-                MaxSessions = account2.Plan?.MaxSessions ?? 0
+                MaxSessions = account2.Plan?.MaxSessions ?? 0,
+                AgentCount = meAgentCount,
+                ActiveSessionCount = meActiveSessionCount,
+                account2.PermissionMode,
+                HasBillingAccount = account2.StripeCustomerId != null,
+                HasStripeSubscription = account2.StripeSubscriptionId != null,
+                account2.CurrentPeriodEnd,
+                account2.CancelAtPeriodEnd
             }
         });
     }

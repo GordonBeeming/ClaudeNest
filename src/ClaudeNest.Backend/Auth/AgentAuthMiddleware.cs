@@ -7,7 +7,7 @@ namespace ClaudeNest.Backend.Auth;
 
 public class AgentAuthMiddleware(RequestDelegate next)
 {
-    public async Task InvokeAsync(HttpContext context, NestDbContext db)
+    public async Task InvokeAsync(HttpContext context, NestDbContext db, TimeProvider timeProvider)
     {
         // Only apply to the SignalR hub negotiate endpoint for agents
         if (!context.Request.Path.StartsWithSegments("/hubs/nest"))
@@ -46,7 +46,7 @@ public class AgentAuthMiddleware(RequestDelegate next)
         }
 
         // Update last used
-        credential.LastUsedAt = DateTime.UtcNow;
+        credential.LastUsedAt = timeProvider.GetUtcNow();
         await db.SaveChangesAsync();
 
         // Store agent ID in connection context for the hub

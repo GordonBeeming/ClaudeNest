@@ -15,7 +15,7 @@ var isDev = builder.Environment.IsDevelopment();
 
 var sqlPassword = builder.AddParameter("sql-password", secret: true, value: "DevPass123!");
 
-var sql = builder.AddSqlServer("sql", sqlPassword)
+var sql = builder.AddSqlServer("sql", sqlPassword, port: 1533)
     .WithDataVolume("nestdb-data")
     .AddDatabase("nestdb");
 

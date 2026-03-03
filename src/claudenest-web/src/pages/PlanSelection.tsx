@@ -1,18 +1,39 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { Bird, ChevronDown, ChevronUp, Sparkles, Clock } from "lucide-react";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { Bird, ChevronDown, ChevronUp, Sparkles, Tag, Check } from "lucide-react";
 import { clsx } from "clsx";
-import { getPlans, selectPlan } from "../api";
+import { getPlans, selectPlan, redeemCoupon } from "../api";
 import { useUserContext } from "../contexts/UserContext";
-import type { PlanInfo } from "../types";
+import type { PlanInfo, CouponValidation } from "../types";
+import { formatDiscountDescription } from "../types";
 
 export function PlanSelection() {
+  const { user } = useUserContext();
+  const hasActiveSubscription = user?.account?.hasStripeSubscription &&
+    (user.account.subscriptionStatus === "Active" || user.account.subscriptionStatus === "Trialing" || user.account.subscriptionStatus === "PastDue") &&
+    !user.account.cancelAtPeriodEnd;
+  const currentPlanId = user?.account?.planId;
   const [plans, setPlans] = useState<PlanInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [selecting, setSelecting] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
+  const [couponResult, setCouponResult] = useState<CouponValidation | null>(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const navigate = useNavigate();
-  const { updateAccount } = useUserContext();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { updateAccount, refreshUser } = useUserContext();
+
+  useEffect(() => {
+    if (searchParams.get("success") === "true") {
+      setSearchParams({}, { replace: true });
+      refreshUser().then(() => navigate("/", { replace: true }));
+    } else if (searchParams.get("cancelled") === "true") {
+      setMessage({ type: "error", text: "Payment was cancelled." });
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams, refreshUser, navigate]);
 
   useEffect(() => {
     getPlans()
@@ -23,11 +44,32 @@ export function PlanSelection() {
   const handleSelect = async (planId: string) => {
     setSelecting(planId);
     try {
-      const account = await selectPlan(planId);
-      updateAccount(account);
-      navigate("/");
+      const validCoupon = couponResult?.valid ? couponResult.code : undefined;
+      const result = await selectPlan(planId, validCoupon);
+      if (result.action === "redirect" && result.redirectUrl) {
+        window.location.href = result.redirectUrl;
+      } else if (result.action === "local" && result.account) {
+        updateAccount(result.account);
+        navigate("/");
+      } else {
+        setSelecting(null);
+      }
     } catch {
       setSelecting(null);
+    }
+  };
+
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) return;
+    setCouponLoading(true);
+    setCouponResult(null);
+    try {
+      const result = await redeemCoupon(couponCode.trim());
+      setCouponResult(result);
+    } catch {
+      setCouponResult({ valid: false, reason: "Failed to validate coupon" });
+    } finally {
+      setCouponLoading(false);
     }
   };
 
@@ -54,10 +96,34 @@ export function PlanSelection() {
         </p>
       </div>
 
+      {hasActiveSubscription && (
+        <div className="mt-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+          You have an active subscription. To change plans, cancel your current subscription from{" "}
+          <Link to="/account" className="font-medium underline hover:no-underline">Account settings</Link>
+          {" "}first, or{" "}
+          <a href="mailto:support@claudenest.com" className="font-medium underline hover:no-underline">contact support</a>
+          {" "}for assistance.
+        </div>
+      )}
+
+      {message && (
+        <div
+          className={clsx(
+            "mt-6 rounded-lg px-4 py-3 text-sm",
+            message.type === "success"
+              ? "border border-green-300 bg-green-50 text-green-800 dark:border-green-700 dark:bg-green-950/30 dark:text-green-200"
+              : "border border-red-300 bg-red-50 text-red-800 dark:border-red-700 dark:bg-red-950/30 dark:text-red-200",
+          )}
+        >
+          {message.text}
+        </div>
+      )}
+
       <div className="mt-10 grid gap-6 md:grid-cols-3">
         {mainPlans.map((plan) => {
           const isPopular = plan.name === "Robin";
-          const hasTrial = plan.trialDays > 0;
+          const hasCoupon = !!plan.defaultCoupon;
+          const freeDays = hasCoupon ? plan.defaultCoupon!.freeMonths * 30 : 0;
 
           return (
             <div
@@ -78,11 +144,11 @@ export function PlanSelection() {
                 </div>
               )}
 
-              {hasTrial && (
+              {hasCoupon && !isPopular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white">
-                    <Clock className="h-3 w-3" />
-                    {plan.trialDays}-day free trial
+                    <Tag className="h-3 w-3" />
+                    {freeDays}-day free trial
                   </span>
                 </div>
               )}
@@ -92,12 +158,23 @@ export function PlanSelection() {
                   {plan.name}
                 </h3>
                 <div className="mt-2 flex items-baseline gap-1">
-                  <span className="text-3xl font-bold text-gray-900 dark:text-white">
-                    ${(plan.priceCents / 100).toFixed(0)}
-                  </span>
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
-                    AUD/mo
-                  </span>
+                  {hasCoupon ? (
+                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                      <span className="text-3xl font-bold text-gray-900 dark:text-white">
+                        ${(plan.priceCents / 100).toFixed(0)}
+                      </span>{" "}
+                      AUD/mo after {freeDays}-day free trial
+                    </span>
+                  ) : (
+                    <>
+                      <span className="text-3xl font-bold text-gray-900 dark:text-white">
+                        ${(plan.priceCents / 100).toFixed(0)}
+                      </span>
+                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                        AUD/mo
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -110,29 +187,78 @@ export function PlanSelection() {
                   <span className="text-nest-500">&#10003;</span>
                   {plan.maxSessions} concurrent sessions
                 </li>
-                {hasTrial && (
+                {hasCoupon && (
                   <li className="flex items-center gap-2">
                     <span className="text-amber-500">&#10003;</span>
-                    {plan.trialDays}-day free trial
+                    {freeDays}-day free trial
                   </li>
                 )}
               </ul>
 
-              <button
-                onClick={() => handleSelect(plan.id)}
-                disabled={selecting !== null}
-                className={clsx(
-                  "mt-6 w-full rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50",
-                  isPopular
-                    ? "bg-nest-500 text-white hover:bg-nest-600"
-                    : "border border-gray-300 text-gray-900 hover:bg-gray-50 dark:border-gray-700 dark:text-white dark:hover:bg-gray-800",
-                )}
-              >
-                {selecting === plan.id ? "Selecting..." : hasTrial ? "Start free trial" : "Get started"}
-              </button>
+              {currentPlanId === plan.id && hasActiveSubscription ? (
+                <div className="mt-6 flex w-full items-center justify-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-700 dark:border-green-700 dark:bg-green-950/30 dark:text-green-400">
+                  <Check className="h-4 w-4" />
+                  Current plan
+                </div>
+              ) : (
+                <button
+                  onClick={() => handleSelect(plan.id)}
+                  disabled={selecting !== null || !!hasActiveSubscription}
+                  className={clsx(
+                    "mt-6 w-full rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50",
+                    isPopular
+                      ? "bg-nest-500 text-white hover:bg-nest-600"
+                      : "border border-gray-300 text-gray-900 hover:bg-gray-50 dark:border-gray-700 dark:text-white dark:hover:bg-gray-800",
+                  )}
+                >
+                  {selecting === plan.id ? "Selecting..." : hasCoupon ? "Start free trial" : "Get started"}
+                </button>
+              )}
             </div>
           );
         })}
+      </div>
+
+      {/* Coupon code input */}
+      <div className="mt-8 flex flex-col items-center gap-3">
+        <p className="text-sm text-gray-500 dark:text-gray-400">Have a coupon code?</p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={couponCode}
+            onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+            placeholder="Enter coupon code"
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+          />
+          <button
+            onClick={handleApplyCoupon}
+            disabled={couponLoading || !couponCode.trim()}
+            className="rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-700 dark:hover:bg-gray-600"
+          >
+            {couponLoading ? "Checking..." : "Apply"}
+          </button>
+        </div>
+        {couponResult && (
+          <p
+            className={clsx(
+              "text-sm",
+              couponResult.valid
+                ? "text-green-600 dark:text-green-400"
+                : "text-red-600 dark:text-red-400",
+            )}
+          >
+            {couponResult.valid
+              ? `Coupon applied: ${formatDiscountDescription(
+                  couponResult.discountType ?? "FreeMonths",
+                  couponResult.freeMonths,
+                  couponResult.percentOff,
+                  couponResult.amountOffCents,
+                  couponResult.freeDays,
+                  couponResult.durationMonths,
+                )} on ${couponResult.planName}`
+              : couponResult.reason || "Invalid coupon code"}
+          </p>
+        )}
       </div>
 
       {extraPlans.length > 0 && (
@@ -180,13 +306,20 @@ export function PlanSelection() {
                         {plan.maxSessions}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => handleSelect(plan.id)}
-                          disabled={selecting !== null}
-                          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                        >
-                          {selecting === plan.id ? "..." : "Select"}
-                        </button>
+                        {currentPlanId === plan.id && hasActiveSubscription ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                            <Check className="h-3 w-3" />
+                            Current
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleSelect(plan.id)}
+                            disabled={selecting !== null || !!hasActiveSubscription}
+                            className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                          >
+                            {selecting === plan.id ? "..." : "Select"}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

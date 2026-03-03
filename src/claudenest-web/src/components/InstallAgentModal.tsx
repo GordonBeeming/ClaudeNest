@@ -114,7 +114,7 @@ function CopyButton({ text }: { text: string }) {
 }
 
 function PlatformSection({
-  platform,
+  platform: _platform,
   config,
   token,
   backendUrl,
