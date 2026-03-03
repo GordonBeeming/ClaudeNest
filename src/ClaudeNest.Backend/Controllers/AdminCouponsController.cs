@@ -54,6 +54,39 @@ public class AdminCouponsController(NestDbContext db, IStripeService stripeServi
         var user = await db.Users.FirstOrDefaultAsync(u => u.Auth0UserId == auth0UserId);
         if (user is null) return Unauthorized();
 
+        if (string.IsNullOrWhiteSpace(request.Code))
+            return BadRequest("Code is required");
+
+        if (request.MaxRedemptions < 1)
+            return BadRequest("Max redemptions must be at least 1");
+
+        // Validate discount type fields
+        switch (request.DiscountType)
+        {
+            case DiscountType.FreeMonths:
+                if (request.FreeMonths < 1)
+                    return BadRequest("Free months must be at least 1");
+                break;
+            case DiscountType.PercentOff:
+                if (request.PercentOff is null or < 1 or > 100)
+                    return BadRequest("Percent off must be between 1 and 100");
+                if (request.DurationMonths is null or < 1)
+                    return BadRequest("Duration months must be at least 1 for PercentOff");
+                break;
+            case DiscountType.AmountOff:
+                if (request.AmountOffCents is null or < 1)
+                    return BadRequest("Amount off must be at least 1 cent");
+                if (request.DurationMonths is null or < 1)
+                    return BadRequest("Duration months must be at least 1 for AmountOff");
+                break;
+            case DiscountType.FreeDays:
+                if (request.FreeDays is null or < 1)
+                    return BadRequest("Free days must be at least 1");
+                break;
+            default:
+                return BadRequest("Invalid discount type");
+        }
+
         var plan = await db.Plans.FindAsync(request.PlanId);
         if (plan is null) return BadRequest("Invalid plan");
 
