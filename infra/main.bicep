@@ -168,6 +168,7 @@ module backendApp 'modules/container-app-backend.bicep' = {
     stripeCurrency: stripeCurrency
     imageTag: backendImageTag
     agentLatestVersion: agentLatestVersion
+    appInsightsConnectionString: containerAppsEnv.outputs.appInsightsConnectionString
   }
 }
 
@@ -229,3 +230,6 @@ output keyVaultName string = keyVault.outputs.kvName
 
 @description('The client ID of the managed identity')
 output managedIdentityClientId string = managedIdentity.outputs.identityClientId
+
+@description('The Application Insights connection string')
+output appInsightsConnectionString string = containerAppsEnv.outputs.appInsightsConnectionString

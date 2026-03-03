@@ -32,6 +32,9 @@ param imageTag string = 'latest'
 @description('The latest agent version')
 param agentLatestVersion string = '1.0.0'
 
+@description('The Application Insights connection string')
+param appInsightsConnectionString string
+
 @description('The client ID of the managed identity')
 param managedIdentityClientId string
 
@@ -155,6 +158,10 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'Agent__LatestVersion'
               value: agentLatestVersion
+            }
+            {
+              name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+              value: appInsightsConnectionString
             }
           ]
         }

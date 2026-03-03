@@ -47,6 +47,17 @@ resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2024-03-01'
   }
 }
 
+resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
+  name: 'ai-claudenest-${environmentName}'
+  location: location
+  kind: 'web'
+  properties: {
+    Application_Type: 'web'
+    WorkspaceResourceId: logAnalytics.id
+    RetentionInDays: 30
+  }
+}
+
 @description('The resource ID of the Container Apps Environment')
 output environmentId string = containerAppsEnvironment.id
 
@@ -55,3 +66,6 @@ output defaultDomain string = containerAppsEnvironment.properties.defaultDomain
 
 @description('The static IP of the Container Apps Environment')
 output staticIp string = containerAppsEnvironment.properties.staticIp
+
+@description('The Application Insights connection string')
+output appInsightsConnectionString string = appInsights.properties.ConnectionString

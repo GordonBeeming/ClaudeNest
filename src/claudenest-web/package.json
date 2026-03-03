@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@auth0/auth0-react": "^2.15.0",
+    "@microsoft/applicationinsights-web": "^3.3.11",
     "@microsoft/signalr": "^10.0.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",

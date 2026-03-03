@@ -54,3 +54,4 @@ jobs:
           VITE_AUTH0_DOMAIN: placeholder
           VITE_AUTH0_CLIENT_ID: placeholder
           VITE_AUTH0_AUDIENCE: placeholder
+          VITE_APPINSIGHTS_CONNECTION_STRING: placeholder
