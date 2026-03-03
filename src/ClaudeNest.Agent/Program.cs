@@ -68,6 +68,25 @@ var host = builder.Build();
 host.Run();
 return 0;
 
+static async Task<bool> ValidateAgentCredentialsAsync(AgentCredentials credentials)
+{
+    try
+    {
+        using var httpClient = new HttpClient();
+        httpClient.DefaultRequestHeaders.Add("X-Agent-Id", credentials.AgentId.ToString());
+        httpClient.DefaultRequestHeaders.Add("X-Agent-Secret", credentials.Secret);
+
+        var negotiateUrl = $"{credentials.BackendUrl.TrimEnd('/')}/hubs/nest/negotiate?negotiateVersion=1";
+        var response = await httpClient.PostAsync(negotiateUrl, null);
+        return response.IsSuccessStatusCode;
+    }
+    catch
+    {
+        // Network error — assume credentials are still valid (don't wipe on connectivity issues)
+        return true;
+    }
+}
+
 static void PrintHelp()
 {
     Console.WriteLine("ClaudeNest Agent");
@@ -117,14 +136,25 @@ static async Task<int> HandleInstallAsync(string[] args)
 
     if (isExistingInstall)
     {
-        Console.WriteLine("An agent is already installed on this machine.");
-        Console.WriteLine();
-        Console.WriteLine("To add directories to the existing agent:");
-        Console.WriteLine("  claudenest-agent add-path /path/to/directory");
-        Console.WriteLine();
-        Console.WriteLine("To remove the existing agent and start fresh:");
-        Console.WriteLine("  claudenest-agent uninstall");
-        return 1;
+        // Verify the agent still exists on the backend
+        var agentStillValid = await ValidateAgentCredentialsAsync(existingCredentials!);
+
+        if (agentStillValid)
+        {
+            Console.WriteLine("An agent is already installed on this machine.");
+            Console.WriteLine();
+            Console.WriteLine("To add directories to the existing agent:");
+            Console.WriteLine("  claudenest-agent add-path /path/to/directory");
+            Console.WriteLine();
+            Console.WriteLine("To remove the existing agent and start fresh:");
+            Console.WriteLine("  claudenest-agent uninstall");
+            return 1;
+        }
+
+        // Agent was deleted from the backend — clean up local state
+        Console.WriteLine("Previous agent was removed from the server. Cleaning up local state...");
+        ConfigLoader.DeleteCredentials();
+        ConfigLoader.DeleteConfig();
     }
 
     // New install — require token and backend

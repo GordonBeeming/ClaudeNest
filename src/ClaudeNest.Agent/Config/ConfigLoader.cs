@@ -50,6 +50,15 @@ public static class ConfigLoader
         }
     }
 
+    public static void DeleteConfig()
+    {
+        var configPath = Path.Combine(ConfigDir, "config.json");
+        if (File.Exists(configPath))
+        {
+            File.Delete(configPath);
+        }
+    }
+
     public static void SaveCredentials(AgentCredentials credentials)
     {
         Directory.CreateDirectory(ConfigDir);
