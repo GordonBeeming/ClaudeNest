@@ -35,6 +35,9 @@ param agentLatestVersion string = '1.0.0'
 @description('The Application Insights connection string')
 param appInsightsConnectionString string
 
+@description('Email address to promote to admin on startup')
+param adminSeedEmail string = ''
+
 @description('The client ID of the managed identity')
 param managedIdentityClientId string
 
@@ -162,6 +165,10 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
               value: appInsightsConnectionString
+            }
+            {
+              name: 'AdminSeedEmail'
+              value: adminSeedEmail
             }
           ]
         }

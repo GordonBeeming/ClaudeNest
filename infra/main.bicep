@@ -51,6 +51,9 @@ param agentLatestVersion string = '1.0.0'
 @secure()
 param cloudflareTunnelToken string
 
+@description('Email address to promote to admin on startup (leave empty to skip)')
+param adminSeedEmail string = ''
+
 // ============================================================================
 // Module 1: VNet
 // ============================================================================
@@ -169,6 +172,7 @@ module backendApp 'modules/container-app-backend.bicep' = {
     imageTag: backendImageTag
     agentLatestVersion: agentLatestVersion
     appInsightsConnectionString: containerAppsEnv.outputs.appInsightsConnectionString
+    adminSeedEmail: adminSeedEmail
   }
 }
 
