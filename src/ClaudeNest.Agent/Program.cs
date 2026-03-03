@@ -117,8 +117,14 @@ static async Task<int> HandleInstallAsync(string[] args)
 
     if (isExistingInstall)
     {
-        // Existing agent — add paths to current config
-        return await HandleAddPathsAsync(existingCredentials!, existingConfig, paths);
+        Console.WriteLine("An agent is already installed on this machine.");
+        Console.WriteLine();
+        Console.WriteLine("To add directories to the existing agent:");
+        Console.WriteLine("  claudenest-agent add-path /path/to/directory");
+        Console.WriteLine();
+        Console.WriteLine("To remove the existing agent and start fresh:");
+        Console.WriteLine("  claudenest-agent uninstall");
+        return 1;
     }
 
     // New install — require token and backend
