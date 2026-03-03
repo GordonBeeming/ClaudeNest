@@ -1,6 +1,8 @@
 ## .NET
 bin/
+bin\\*/
 obj/
+obj\\*/
 *.user
 *.suo
 *.userosscache
@@ -12,6 +14,7 @@ obj/
 ## Build results
 [Dd]ebug/
 [Rr]elease/
+*.binlog
 x64/
 x86/
 build/

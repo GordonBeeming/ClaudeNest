@@ -4,7 +4,10 @@
 .agents
 **/.claude
 **/bin
+**/bin[\\]*
 **/obj
+**/obj[\\]*
+*.binlog
 **/node_modules
 .dev-workspace
 .webhook-traces
