@@ -67,6 +67,18 @@ static async Task<int> HandleInstallAsync(string[] args)
         }
     }
 
+    // Check if agent is already installed on this machine
+    var existingCredentials = ConfigLoader.LoadCredentials();
+    var existingConfig = ConfigLoader.LoadConfig();
+    var isExistingInstall = existingCredentials is not null && existingConfig.AllowedPaths.Count > 0;
+
+    if (isExistingInstall)
+    {
+        // Existing agent — add paths to current config
+        return await HandleAddPathsAsync(existingCredentials!, existingConfig, paths);
+    }
+
+    // New install — require token and backend
     if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(backendUrl))
     {
         Console.Error.WriteLine("Usage: claudenest-agent install --token <TOKEN> --backend <URL> [--name <NAME>] [--path <PATH> ...]");
@@ -99,6 +111,168 @@ static async Task<int> HandleInstallAsync(string[] args)
         paths.Add(path);
     }
 
+    // Validate and trust paths
+    var trustResult = await ValidateAndTrustPaths(paths, backendUrl, agentName);
+    if (trustResult != 0) return trustResult;
+
+    Console.WriteLine();
+    Console.WriteLine($"Pairing with backend at {backendUrl}...");
+
+    var os = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows"
+        : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "macos"
+        : "linux";
+
+    var request = new PairingExchangeRequest
+    {
+        Token = token,
+        AgentName = agentName,
+        Hostname = Environment.MachineName,
+        OS = os
+    };
+
+    using var http = new HttpClient();
+    var content = new StringContent(
+        JsonSerializer.Serialize(request, AgentJsonContext.Default.PairingExchangeRequest),
+        System.Text.Encoding.UTF8,
+        "application/json");
+
+    HttpResponseMessage response;
+    try
+    {
+        response = await http.PostAsync($"{backendUrl.TrimEnd('/')}/api/pairing/exchange", content);
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Failed to connect to backend: {ex.Message}");
+        return 1;
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        var error = await response.Content.ReadAsStringAsync();
+        Console.Error.WriteLine($"Pairing failed ({response.StatusCode}): {error}");
+        return 1;
+    }
+
+    var result = await response.Content.ReadFromJsonAsync(AgentJsonContext.Default.PairingExchangeResponse);
+    if (result is null)
+    {
+        Console.Error.WriteLine("Pairing failed: empty response from backend");
+        return 1;
+    }
+
+    // Save credentials
+    var credentials = new AgentCredentials
+    {
+        AgentId = result.AgentId,
+        Secret = result.Secret,
+        BackendUrl = backendUrl
+    };
+    ConfigLoader.SaveCredentials(credentials);
+
+    return await InstallBinaryAndService(credentials, agentName, paths);
+}
+
+static async Task<int> HandleAddPathsAsync(AgentCredentials credentials, NestConfig existingConfig, List<string> newPaths)
+{
+    Console.WriteLine($"Existing agent found: {existingConfig.Name} (ID: {credentials.AgentId})");
+    Console.WriteLine($"Current paths: {string.Join(", ", existingConfig.AllowedPaths)}");
+    Console.WriteLine();
+
+    // Prompt for new path if not provided via --path
+    if (newPaths.Count == 0)
+    {
+        var defaultPath = Directory.GetCurrentDirectory();
+        Console.Write($"Path to add [{defaultPath}]: ");
+        var input = Console.ReadLine()?.Trim();
+        var path = string.IsNullOrEmpty(input) ? defaultPath : Path.GetFullPath(input);
+
+        if (!Directory.Exists(path))
+        {
+            Console.Error.WriteLine($"Directory does not exist: {path}");
+            return 1;
+        }
+
+        newPaths.Add(path);
+    }
+
+    // Filter out paths that are already configured
+    var pathsToAdd = newPaths
+        .Where(p => !existingConfig.AllowedPaths.Any(existing =>
+            string.Equals(Path.GetFullPath(existing), Path.GetFullPath(p), StringComparison.OrdinalIgnoreCase)))
+        .ToList();
+
+    if (pathsToAdd.Count == 0)
+    {
+        Console.WriteLine("All specified paths are already configured. Nothing to do.");
+        return 0;
+    }
+
+    // Validate and trust the new paths
+    var trustResult = await ValidateAndTrustPaths(pathsToAdd, credentials.BackendUrl, existingConfig.Name ?? Environment.MachineName);
+    if (trustResult != 0) return trustResult;
+
+    // Merge paths into existing config
+    var mergedPaths = existingConfig.AllowedPaths.Concat(pathsToAdd).Distinct().ToList();
+    existingConfig.AllowedPaths = mergedPaths;
+    ConfigLoader.SaveConfig(existingConfig);
+
+    Console.WriteLine();
+    Console.WriteLine("Configuration updated:");
+    Console.WriteLine($"  Agent ID:    {credentials.AgentId}");
+    Console.WriteLine($"  Name:        {existingConfig.Name}");
+    Console.WriteLine($"  Paths:       {string.Join(", ", mergedPaths)}");
+    Console.WriteLine($"  Added:       {string.Join(", ", pathsToAdd)}");
+
+    // Restart the service so it picks up the new config
+    Console.WriteLine();
+    Console.WriteLine("Restarting agent service...");
+    using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+    var serviceLogger = loggerFactory.CreateLogger("ServiceInstaller");
+
+    try
+    {
+        var installer = ServiceInstallerFactory.Create(serviceLogger);
+        if (installer.IsInstalled())
+        {
+            await installer.UninstallAsync();
+            var binaryPath = existingConfig.InstalledBinaryPath
+                ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest", "bin",
+                    RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "claudenest-agent.exe" : "claudenest-agent");
+
+            // Update binary if running from a different location
+            var currentBinaryPath = Environment.ProcessPath;
+            if (currentBinaryPath is not null && currentBinaryPath != binaryPath && File.Exists(currentBinaryPath))
+            {
+                Console.WriteLine($"Updating agent binary at {binaryPath}...");
+                File.Copy(currentBinaryPath, binaryPath, overwrite: true);
+                if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    File.SetUnixFileMode(binaryPath,
+                        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                        UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                        UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+                }
+            }
+
+            await installer.InstallAsync(binaryPath);
+            Console.WriteLine("Agent restarted. New paths are now active.");
+        }
+        else
+        {
+            Console.WriteLine("No background service found. Start the agent manually or re-run a full install.");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Warning: Could not restart service ({ex.Message}). Restart the agent manually for changes to take effect.");
+    }
+
+    return 0;
+}
+
+static async Task<int> ValidateAndTrustPaths(List<string> paths, string backendUrl, string agentName)
+{
     // Validate all paths exist
     foreach (var path in paths)
     {
@@ -185,61 +359,11 @@ static async Task<int> HandleInstallAsync(string[] args)
 
     Console.WriteLine();
     Console.WriteLine("✅ All workspaces trusted.");
-    Console.WriteLine();
-    Console.WriteLine($"Pairing with backend at {backendUrl}...");
+    return 0;
+}
 
-    var os = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows"
-        : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "macos"
-        : "linux";
-
-    var request = new PairingExchangeRequest
-    {
-        Token = token,
-        AgentName = agentName,
-        Hostname = Environment.MachineName,
-        OS = os
-    };
-
-    using var http = new HttpClient();
-    var content = new StringContent(
-        JsonSerializer.Serialize(request, AgentJsonContext.Default.PairingExchangeRequest),
-        System.Text.Encoding.UTF8,
-        "application/json");
-
-    HttpResponseMessage response;
-    try
-    {
-        response = await http.PostAsync($"{backendUrl.TrimEnd('/')}/api/pairing/exchange", content);
-    }
-    catch (Exception ex)
-    {
-        Console.Error.WriteLine($"Failed to connect to backend: {ex.Message}");
-        return 1;
-    }
-
-    if (!response.IsSuccessStatusCode)
-    {
-        var error = await response.Content.ReadAsStringAsync();
-        Console.Error.WriteLine($"Pairing failed ({response.StatusCode}): {error}");
-        return 1;
-    }
-
-    var result = await response.Content.ReadFromJsonAsync(AgentJsonContext.Default.PairingExchangeResponse);
-    if (result is null)
-    {
-        Console.Error.WriteLine("Pairing failed: empty response from backend");
-        return 1;
-    }
-
-    // Save credentials
-    var credentials = new AgentCredentials
-    {
-        AgentId = result.AgentId,
-        Secret = result.Secret,
-        BackendUrl = backendUrl
-    };
-    ConfigLoader.SaveCredentials(credentials);
-
+static async Task<int> InstallBinaryAndService(AgentCredentials credentials, string agentName, List<string> paths)
+{
     // Copy binary to ~/.claudenest/bin/
     var claudeNestDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest");
     var binDir = Path.Combine(claudeNestDir, "bin");
