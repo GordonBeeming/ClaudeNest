@@ -78,6 +78,49 @@ public class AdminCompanyDealsController(NestDbContext db, TimeProvider timeProv
         });
     }
 
+    [HttpPatch("{id:guid}")]
+    public async Task<IActionResult> UpdateDeal(Guid id, [FromBody] UpdateCompanyDealRequest request)
+    {
+        var deal = await db.CompanyDeals.Include(d => d.Plan).FirstOrDefaultAsync(d => d.Id == id);
+        if (deal is null) return NotFound();
+        if (!deal.IsActive) return BadRequest("Cannot edit an inactive deal");
+
+        var newPlan = await db.Plans.FindAsync(request.PlanId);
+        if (newPlan is null) return BadRequest("Invalid plan");
+
+        var oldPlanId = deal.PlanId;
+        deal.PlanId = request.PlanId;
+
+        // Switch all accounts on this domain that were on the old plan (without Stripe subscription)
+        var affectedAccounts = await db.Users
+            .AsTracking()
+            .Where(u => u.Email.EndsWith("@" + deal.Domain))
+            .Select(u => u.Account)
+            .Where(a => a.PlanId == oldPlanId && a.StripeSubscriptionId == null
+                && a.SubscriptionStatus == SubscriptionStatus.Active)
+            .Distinct()
+            .ToListAsync();
+
+        foreach (var account in affectedAccounts)
+        {
+            account.PlanId = request.PlanId;
+        }
+
+        await db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            deal.Id,
+            deal.Domain,
+            deal.PlanId,
+            PlanName = newPlan.Name,
+            deal.IsActive,
+            deal.CreatedAt,
+            deal.DeactivatedAt,
+            AffectedAccounts = affectedAccounts.Count
+        });
+    }
+
     [HttpPut("{id:guid}/deactivate")]
     public async Task<IActionResult> DeactivateDeal(Guid id)
     {
@@ -114,3 +157,4 @@ public class AdminCompanyDealsController(NestDbContext db, TimeProvider timeProv
 }
 
 public record CreateCompanyDealRequest(string Domain, Guid PlanId);
+public record UpdateCompanyDealRequest(Guid PlanId);

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { Building, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Building, Plus, RefreshCw, Trash2, Pencil } from "lucide-react";
 import { clsx } from "clsx";
-import { getAdminCompanyDeals, createAdminCompanyDeal, deactivateAdminCompanyDeal, getPlans } from "../../api";
+import { getAdminCompanyDeals, createAdminCompanyDeal, updateAdminCompanyDeal, deactivateAdminCompanyDeal, getPlans } from "../../api";
 import type { CompanyDeal, PlanInfo } from "../../types";
 import { PlanPicker } from "../../components/PlanPicker";
 
@@ -16,6 +16,8 @@ export function CompanyDeals() {
 
   const [domain, setDomain] = useState("");
   const [planId, setPlanId] = useState("");
+  const [editingDealId, setEditingDealId] = useState<string | null>(null);
+  const [editPlanId, setEditPlanId] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -45,6 +47,31 @@ export function CompanyDeals() {
       setShowForm(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create deal");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function startEditing(deal: CompanyDeal) {
+    setEditingDealId(deal.id);
+    setEditPlanId(deal.planId);
+  }
+
+  async function handleUpdate(deal: CompanyDeal) {
+    if (!editPlanId || editPlanId === deal.planId) {
+      setEditingDealId(null);
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const updated = await updateAdminCompanyDeal(deal.id, { planId: editPlanId });
+      setDeals((prev) => prev.map((d) => (d.id === deal.id ? updated : d)));
+      setSuccess(`Deal for "${deal.domain}" updated to ${updated.planName}`);
+      setEditingDealId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update deal");
     } finally {
       setSubmitting(false);
     }
@@ -171,7 +198,13 @@ export function CompanyDeals() {
                 {deals.map((deal) => (
                   <tr key={deal.id} className="border-b border-gray-50 last:border-0 dark:border-gray-800/50">
                     <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{deal.domain}</td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{deal.planName}</td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                      {editingDealId === deal.id ? (
+                        <PlanPicker plans={plans} value={editPlanId} onChange={setEditPlanId} required />
+                      ) : (
+                        deal.planName
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <span
                         className={clsx(
@@ -193,15 +226,40 @@ export function CompanyDeals() {
                         : "-"}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {deal.isActive && (
-                        <button
-                          onClick={() => handleDeactivate(deal)}
-                          className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                          Deactivate
-                        </button>
-                      )}
+                      {deal.isActive && editingDealId === deal.id ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => handleUpdate(deal)}
+                            disabled={submitting}
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20 transition-colors disabled:opacity-50"
+                          >
+                            {submitting ? <RefreshCw className="h-3 w-3 animate-spin" /> : "Save"}
+                          </button>
+                          <button
+                            onClick={() => setEditingDealId(null)}
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : deal.isActive ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => startEditing(deal)}
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-nest-600 hover:bg-nest-50 dark:text-nest-400 dark:hover:bg-nest-900/20 transition-colors"
+                          >
+                            <Pencil className="h-3 w-3" />
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeactivate(deal)}
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            Deactivate
+                          </button>
+                        </div>
+                      ) : null}
                     </td>
                   </tr>
                 ))}

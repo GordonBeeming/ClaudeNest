@@ -186,6 +186,13 @@ export async function createAdminCompanyDeal(data: { domain: string; planId: str
   });
 }
 
+export async function updateAdminCompanyDeal(id: string, data: { planId: string }): Promise<CompanyDeal> {
+  return apiFetch<CompanyDeal>(`/admin/company-deals/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
 export async function deactivateAdminCompanyDeal(id: string): Promise<void> {
   return apiFetch<void>(`/admin/company-deals/${id}/deactivate`, { method: "POST" });
 }
