@@ -7,13 +7,22 @@ using ClaudeNest.Agent.Config;
 using ClaudeNest.Agent.Serialization;
 using ClaudeNest.Agent.ServiceInstall;
 
-// Handle '--add-path' flag: add directories to an existing agent
-if (args.Any(a => a == "--add-path"))
+// Handle subcommands — first arg is always the command
+if (args.Length > 0 && args[0] == "add-path")
 {
     return await HandleAddPathCommand(args);
 }
 
-// Handle 'uninstall' subcommand
+if (args.Length > 0 && args[0] == "remove-path")
+{
+    return await HandleRemovePathCommand(args);
+}
+
+if (args.Length > 0 && args[0] == "list-paths")
+{
+    return HandleListPaths();
+}
+
 if (args.Length > 0 && args[0] == "uninstall")
 {
     return await HandleUninstallAsync();
@@ -499,12 +508,9 @@ static async Task RunClaudeTrustAsync(string directoryPath)
 static async Task<int> HandleAddPathCommand(string[] args)
 {
     List<string> paths = [];
-    for (var i = 0; i < args.Length; i++)
+    for (var i = 1; i < args.Length; i++)
     {
-        if (args[i] == "--add-path" && i + 1 < args.Length)
-        {
-            paths.Add(Path.GetFullPath(args[++i]));
-        }
+        paths.Add(Path.GetFullPath(args[i]));
     }
 
     var credentials = ConfigLoader.LoadCredentials();
@@ -517,6 +523,125 @@ static async Task<int> HandleAddPathCommand(string[] args)
     }
 
     return await HandleAddPathsAsync(credentials, config, paths);
+}
+
+static async Task<int> HandleRemovePathCommand(string[] args)
+{
+    List<string> paths = [];
+    for (var i = 1; i < args.Length; i++)
+    {
+        paths.Add(Path.GetFullPath(args[i]));
+    }
+
+    var credentials = ConfigLoader.LoadCredentials();
+    var config = ConfigLoader.LoadConfig();
+
+    if (credentials is null || config.AllowedPaths.Count == 0)
+    {
+        Console.Error.WriteLine("No agent installed. Run 'claudenest-agent install' first.");
+        return 1;
+    }
+
+    if (paths.Count == 0)
+    {
+        Console.Error.WriteLine("Usage: claudenest-agent remove-path /path/to/directory");
+        return 1;
+    }
+
+    var removed = new List<string>();
+    foreach (var p in paths)
+    {
+        var match = config.AllowedPaths.FirstOrDefault(existing =>
+            string.Equals(Path.GetFullPath(existing), p, StringComparison.OrdinalIgnoreCase));
+        if (match is not null)
+        {
+            config.AllowedPaths.Remove(match);
+            removed.Add(match);
+        }
+        else
+        {
+            Console.WriteLine($"Path not found in config: {p}");
+        }
+    }
+
+    if (removed.Count == 0)
+    {
+        Console.WriteLine("No paths were removed.");
+        return 0;
+    }
+
+    if (config.AllowedPaths.Count == 0)
+    {
+        Console.Error.WriteLine("Cannot remove all paths — at least one allowed path is required.");
+        Console.Error.WriteLine("Use 'claudenest-agent uninstall' to fully remove the agent.");
+        // Restore removed paths
+        config.AllowedPaths.AddRange(removed);
+        return 1;
+    }
+
+    ConfigLoader.SaveConfig(config);
+
+    Console.WriteLine($"Removed: {string.Join(", ", removed)}");
+    Console.WriteLine($"Remaining paths: {string.Join(", ", config.AllowedPaths)}");
+
+    // Restart service to pick up changes
+    using var loggerFactory = LoggerFactory.Create(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
+    var serviceLogger = loggerFactory.CreateLogger("ServiceInstaller");
+    try
+    {
+        var installer = ServiceInstallerFactory.Create(serviceLogger);
+        if (installer.IsInstalled())
+        {
+            await installer.UninstallAsync();
+            var binaryPath = config.InstalledBinaryPath
+                ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest", "bin",
+                    RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "claudenest-agent.exe" : "claudenest-agent");
+            await installer.InstallAsync(binaryPath);
+            Console.WriteLine("Agent restarted.");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Warning: Could not restart service ({ex.Message}). Restart manually.");
+    }
+
+    return 0;
+}
+
+static int HandleListPaths()
+{
+    var config = ConfigLoader.LoadConfig();
+    var credentials = ConfigLoader.LoadCredentials();
+
+    if (credentials is null)
+    {
+        Console.Error.WriteLine("No agent installed. Run 'claudenest-agent install' first.");
+        return 1;
+    }
+
+    Console.WriteLine($"Agent: {config.Name ?? "unnamed"} (ID: {credentials.AgentId})");
+    Console.WriteLine();
+
+    if (config.AllowedPaths.Count == 0)
+    {
+        Console.WriteLine("No allowed paths configured.");
+    }
+    else
+    {
+        Console.WriteLine("Allowed paths:");
+        foreach (var p in config.AllowedPaths)
+            Console.WriteLine($"  {p}");
+    }
+
+    if (config.DeniedPaths.Count > 0)
+    {
+        Console.WriteLine();
+        Console.WriteLine("Denied paths:");
+        foreach (var p in config.DeniedPaths)
+            Console.WriteLine($"  {p}");
+    }
+
+    return 0;
 }
 
 static void EnsureBinOnPath(string binDir)

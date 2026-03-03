@@ -380,7 +380,7 @@ export function AgentDetail() {
               Add more folders to this agent
             </div>
             <code className="mt-1.5 block text-xs text-gray-600 dark:text-gray-300">
-              claudenest-agent --add-path /path/to/directory
+              claudenest-agent add-path /path/to/directory
             </code>
           </div>
         </div>
