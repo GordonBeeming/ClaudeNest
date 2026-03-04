@@ -427,7 +427,6 @@ export function FavoriteFolderTree({
             preferences={preferences}
             onToggleFavorite={onToggleFavorite}
             onSetColor={onSetColor}
-            autoExpand
           />
         );
       })}
