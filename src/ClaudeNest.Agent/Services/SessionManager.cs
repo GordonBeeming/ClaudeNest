@@ -268,17 +268,32 @@ public sealed class SessionManager(
     {
         try
         {
-            var claudeBinary = ResolveBinaryPath(config.ClaudeBinary);
+            string fileName;
+            string arguments;
 
-            var arguments = !string.IsNullOrEmpty(session.PermissionMode) && session.PermissionMode != "default"
-                ? $"remote-control --permission-mode {session.PermissionMode}"
-                : "remote-control";
+            if (OperatingSystem.IsWindows())
+            {
+                // Claude Code requires WSL2 on Windows — launch via wsl
+                fileName = "wsl";
+                var wslPath = ToWslPath(session.Path);
+                var claudeArgs = !string.IsNullOrEmpty(session.PermissionMode) && session.PermissionMode != "default"
+                    ? $"remote-control --permission-mode {session.PermissionMode}"
+                    : "remote-control";
+                arguments = $"--cd \"{wslPath}\" -- claude {claudeArgs}";
+            }
+            else
+            {
+                fileName = ResolveBinaryPath(config.ClaudeBinary);
+                arguments = !string.IsNullOrEmpty(session.PermissionMode) && session.PermissionMode != "default"
+                    ? $"remote-control --permission-mode {session.PermissionMode}"
+                    : "remote-control";
+            }
 
             var process = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = claudeBinary,
+                    FileName = fileName,
                     Arguments = arguments,
                     WorkingDirectory = session.Path,
                     RedirectStandardOutput = true,
@@ -333,8 +348,10 @@ public sealed class SessionManager(
             logger.LogError(ex, "Failed to start claude process for session {SessionId}", session.SessionId);
             session.State = SessionState.Crashed;
             session.EndedAt = DateTime.UtcNow;
-            session.ErrorMessage = ex.Message.Contains("No such file or directory")
-                ? $"{ex.Message} Set ClaudeBinary in ~/.claudenest/config.json to the full path (e.g. /Users/you/.local/bin/claude)."
+            session.ErrorMessage = ex.Message.Contains("No such file or directory") || ex.Message.Contains("system cannot find")
+                ? OperatingSystem.IsWindows()
+                    ? $"{ex.Message} Claude Code requires WSL2 on Windows. Ensure WSL2 is installed and 'claude' is available inside WSL. See: https://claude.ai/public/artifacts/03a4aa0c-67b2-427f-838e-63770900bf1d"
+                    : $"{ex.Message} Set ClaudeBinary in ~/.claudenest/config.json to the full path (e.g. /Users/you/.local/bin/claude)."
                 : ex.Message;
             NotifyStatusChanged(session);
         }
@@ -364,6 +381,20 @@ public sealed class SessionManager(
             session.EndedAt = DateTime.UtcNow;
             NotifyStatusChanged(session);
         }
+    }
+
+    private static string ToWslPath(string windowsPath)
+    {
+        var fullPath = Path.GetFullPath(windowsPath);
+        // Convert "C:\Users\foo" to "/mnt/c/Users/foo"
+        if (fullPath.Length >= 2 && fullPath[1] == ':')
+        {
+            var driveLetter = char.ToLowerInvariant(fullPath[0]);
+            var rest = fullPath[2..].Replace('\\', '/');
+            return $"/mnt/{driveLetter}{rest}";
+        }
+        // UNC or other — just swap slashes and hope for the best
+        return fullPath.Replace('\\', '/');
     }
 
     private void NotifyStatusChanged(ManagedSession session)

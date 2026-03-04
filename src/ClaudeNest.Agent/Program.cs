@@ -186,7 +186,76 @@ static async Task<int> HandleDiagAsync()
     else
         Console.WriteLine("[FAIL] Service is not installed");
 
-    // 4. Check backend connectivity
+    // 4. Check WSL2 on Windows
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+    {
+        Console.Write("       Checking WSL2 availability... ");
+        try
+        {
+            var wslProcess = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = "wsl",
+                    Arguments = "--status",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+            wslProcess.Start();
+            wslProcess.WaitForExit(10000);
+            if (wslProcess.ExitCode == 0)
+            {
+                Console.WriteLine("OK");
+                Console.WriteLine("[OK]   WSL2 is available");
+
+                // Check if claude is available inside WSL
+                Console.Write("       Checking claude inside WSL... ");
+                var claudeCheck = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "wsl",
+                        Arguments = "-- which claude",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+                claudeCheck.Start();
+                var claudePath = claudeCheck.StandardOutput.ReadLine()?.Trim();
+                claudeCheck.WaitForExit(10000);
+                if (claudeCheck.ExitCode == 0 && !string.IsNullOrEmpty(claudePath))
+                {
+                    Console.WriteLine("OK");
+                    Console.WriteLine($"[OK]   claude found at {claudePath} (inside WSL)");
+                }
+                else
+                {
+                    Console.WriteLine("NOT FOUND");
+                    Console.WriteLine("[FAIL] claude not found inside WSL. Install Claude Code in your WSL distribution.");
+                    Console.WriteLine("       Guide: https://claude.ai/public/artifacts/03a4aa0c-67b2-427f-838e-63770900bf1d");
+                }
+            }
+            else
+            {
+                Console.WriteLine("NOT AVAILABLE");
+                Console.WriteLine("[FAIL] WSL2 is not available. Claude Code requires WSL2 on Windows.");
+                Console.WriteLine("       Guide: https://claude.ai/public/artifacts/03a4aa0c-67b2-427f-838e-63770900bf1d");
+            }
+        }
+        catch
+        {
+            Console.WriteLine("FAILED");
+            Console.WriteLine("[FAIL] Could not check WSL2 status. Claude Code requires WSL2 on Windows.");
+            Console.WriteLine("       Guide: https://claude.ai/public/artifacts/03a4aa0c-67b2-427f-838e-63770900bf1d");
+        }
+    }
+
+    // 5. Check backend connectivity
     Console.Write("       Checking backend connectivity... ");
     try
     {
@@ -201,7 +270,7 @@ static async Task<int> HandleDiagAsync()
         return 1;
     }
 
-    // 5. Check agent credentials against backend
+    // 6. Check agent credentials against backend
     Console.Write("       Validating agent credentials... ");
     var isValid = await ValidateAgentCredentialsAsync(credentials);
     if (isValid)
@@ -216,7 +285,7 @@ static async Task<int> HandleDiagAsync()
         Console.WriteLine("       Run 'claudenest-agent uninstall' then 'claudenest-agent install' to re-pair.");
     }
 
-    // 6. Check logs
+    // 7. Check logs
     var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest", "logs");
     var errorLog = Path.Combine(logDir, "agent-error.log");
     if (File.Exists(errorLog))
@@ -665,6 +734,13 @@ static async Task<int> InstallBinaryAndService(AgentCredentials credentials, str
             Console.WriteLine($"  Config:      {claudeNestDir}/");
             Console.WriteLine();
             Console.WriteLine("The agent is now running as a background service and will start automatically on login.");
+            if (isWindows)
+            {
+                Console.WriteLine();
+                Console.WriteLine("IMPORTANT: Claude Code requires WSL2 on Windows.");
+                Console.WriteLine("Make sure WSL2 is installed and 'claude' is available inside your WSL distribution.");
+                Console.WriteLine("Setup guide: https://claude.ai/public/artifacts/03a4aa0c-67b2-427f-838e-63770900bf1d");
+            }
             Console.WriteLine("To uninstall, run: claudenest-agent uninstall");
             // Exit without running the agent inline since the service is now managing it
             return 0;
@@ -693,11 +769,13 @@ static async Task RunClaudeTrustAsync(string directoryPath)
     {
         // Run claude interactively so the user sees and can accept the trust dialog.
         // We inherit stdin/stdout/stderr so the trust prompt appears in the terminal.
+        var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
         var process = new Process
         {
             StartInfo = new ProcessStartInfo
             {
-                FileName = "claude",
+                FileName = isWindows ? "wsl" : "claude",
+                Arguments = isWindows ? $"--cd \"{ToWslPath(directoryPath)}\" -- claude" : "",
                 WorkingDirectory = directoryPath,
                 UseShellExecute = false,
                 RedirectStandardInput = false,
@@ -1084,8 +1162,25 @@ static async Task<int> HandleUninstallAsync()
     return 0;
 }
 
+static string ToWslPath(string windowsPath)
+{
+    var fullPath = Path.GetFullPath(windowsPath);
+    if (fullPath.Length >= 2 && fullPath[1] == ':')
+    {
+        var driveLetter = char.ToLowerInvariant(fullPath[0]);
+        var rest = fullPath[2..].Replace('\\', '/');
+        return $"/mnt/{driveLetter}{rest}";
+    }
+    return fullPath.Replace('\\', '/');
+}
+
 static Task<bool> IsWorkspaceUntrustedAsync(string directoryPath)
 {
+    // On Windows, Claude Code runs inside WSL so the trust config lives in WSL's home.
+    // We can't easily read it from the Windows side, so always trigger the trust flow.
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        return Task.FromResult(true);
+
     // Read trust status directly from ~/.claude.json instead of spawning processes.
     // Claude Code stores trust in: projects[normalizedPath].hasTrustDialogAccepted
     // It also walks up parent directories, so if a parent is trusted, children are too.
