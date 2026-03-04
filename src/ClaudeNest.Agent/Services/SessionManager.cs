@@ -137,10 +137,71 @@ public sealed class SessionManager(
         }
     }
 
+    private string ResolveBinaryPath(string binary)
+    {
+        // If already an absolute path, use it directly
+        if (Path.IsPathRooted(binary))
+            return binary;
+
+        // Try to find it via 'which' (Unix) or 'where' (Windows)
+        try
+        {
+            var isWindows = OperatingSystem.IsWindows();
+            var whichProcess = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = isWindows ? "where" : "which",
+                    Arguments = binary,
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+            whichProcess.Start();
+            var result = whichProcess.StandardOutput.ReadLine()?.Trim();
+            whichProcess.WaitForExit(5000);
+            if (whichProcess.ExitCode == 0 && !string.IsNullOrEmpty(result) && File.Exists(result))
+            {
+                logger.LogInformation("Resolved '{Binary}' to '{FullPath}'", binary, result);
+                return result;
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to resolve binary via which/where");
+        }
+
+        // Check common installation paths as fallback
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        string[] commonPaths =
+        [
+            Path.Combine(home, ".local", "bin", binary),
+            Path.Combine(home, ".npm-global", "bin", binary),
+            $"/usr/local/bin/{binary}",
+            $"/opt/homebrew/bin/{binary}",
+        ];
+
+        foreach (var path in commonPaths)
+        {
+            if (File.Exists(path))
+            {
+                logger.LogInformation("Found '{Binary}' at '{FullPath}'", binary, path);
+                return path;
+            }
+        }
+
+        // Return as-is and let the process start fail with a clear error
+        logger.LogWarning("Could not resolve full path for '{Binary}', using as-is", binary);
+        return binary;
+    }
+
     private async Task SpawnProcessAsync(ManagedSession session)
     {
         try
         {
+            var claudeBinary = ResolveBinaryPath(config.ClaudeBinary);
+
             var arguments = !string.IsNullOrEmpty(session.PermissionMode) && session.PermissionMode != "default"
                 ? $"remote-control --permission-mode {session.PermissionMode}"
                 : "remote-control";
@@ -149,7 +210,7 @@ public sealed class SessionManager(
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = config.ClaudeBinary,
+                    FileName = claudeBinary,
                     Arguments = arguments,
                     WorkingDirectory = session.Path,
                     RedirectStandardOutput = true,
@@ -204,7 +265,9 @@ public sealed class SessionManager(
             logger.LogError(ex, "Failed to start claude process for session {SessionId}", session.SessionId);
             session.State = SessionState.Crashed;
             session.EndedAt = DateTime.UtcNow;
-            session.ErrorMessage = ex.Message;
+            session.ErrorMessage = ex.Message.Contains("No such file or directory")
+                ? $"{ex.Message} Set ClaudeBinary in ~/.claudenest/config.json to the full path (e.g. /Users/you/.local/bin/claude)."
+                : ex.Message;
             NotifyStatusChanged(session);
         }
     }
