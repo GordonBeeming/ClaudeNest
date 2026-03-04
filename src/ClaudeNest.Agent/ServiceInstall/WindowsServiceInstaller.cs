@@ -47,7 +47,7 @@ public sealed class WindowsServiceInstaller(ILogger logger) : IServiceInstaller
                   <Actions>
                     <Exec>
                       <Command>{SecurityElement.Escape(binaryPath)}</Command>
-                      <Arguments>run</Arguments>
+                      <Arguments>run --hidden</Arguments>
                     </Exec>
                   </Actions>
                 </Task>

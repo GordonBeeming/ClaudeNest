@@ -84,6 +84,15 @@ if (args[0] != "run" && args[0] != "install")
 }
 
 // Run the agent (works for both post-install and standalone 'run')
+
+// Hide the console window on Windows when launched by the scheduled task with --hidden.
+// The scheduled task uses InteractiveToken which creates a visible cmd window;
+// hiding it prevents the user from accidentally closing it and killing the agent.
+if (args.Contains("--hidden") && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+{
+    HideConsoleWindow();
+}
+
 var hostArgs = args[1..]; // strip subcommand so the host doesn't choke on it
 
 var builder = Host.CreateApplicationBuilder(hostArgs);
@@ -95,6 +104,16 @@ builder.Services.AddHostedService<AgentWorker>();
 var host = builder.Build();
 host.Run();
 return 0;
+
+static void HideConsoleWindow()
+{
+    const int SW_HIDE = 0;
+    var handle = WindowsConsoleNativeMethods.GetConsoleWindow();
+    if (handle != IntPtr.Zero)
+    {
+        WindowsConsoleNativeMethods.ShowWindow(handle, SW_HIDE);
+    }
+}
 
 static async Task<bool> ValidateAgentCredentialsAsync(AgentCredentials credentials)
 {

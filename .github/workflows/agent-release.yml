@@ -125,7 +125,7 @@ jobs:
         run: |
           ZIP_PATH="$RUNNER_TEMP/${{ matrix.artifact }}.zip"
           ditto -c -k --keepParent "${{ matrix.artifact }}" "$ZIP_PATH"
-          xcrun notarytool submit "$ZIP_PATH" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --wait
+          xcrun notarytool submit "$ZIP_PATH" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --wait --timeout 60m
 
       - name: Cleanup keychain
         if: ${{ always() && runner.os == 'macOS' }}
