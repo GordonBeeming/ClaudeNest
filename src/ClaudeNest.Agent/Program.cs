@@ -299,6 +299,15 @@ static async Task<int> HandleInstallAsync(string[] args)
 
         if (agentStillValid)
         {
+            // Check if the service is actually running — if not, re-register it
+            using var checkLoggerFactory = LoggerFactory.Create(_ => { });
+            var checkInstaller = ServiceInstallerFactory.Create(checkLoggerFactory.CreateLogger("check"));
+            if (!checkInstaller.IsInstalled())
+            {
+                Console.WriteLine("Agent is paired but the background service is not installed. Re-registering service...");
+                return await InstallBinaryAndService(existingCredentials!, existingConfig.Name ?? Environment.MachineName, existingConfig.AllowedPaths);
+            }
+
             Console.WriteLine("An agent is already installed on this machine.");
             Console.WriteLine();
             Console.WriteLine("To add directories to the existing agent:");
@@ -1148,13 +1157,34 @@ static async Task<int> HandleUninstallAsync()
             Directory.Delete(binDir, true);
             Console.WriteLine("Removed installed binary.");
         }
-        catch (Exception ex)
+        catch
         {
-            Console.Error.WriteLine($"Warning: Could not remove binary directory: {ex.Message}");
+            // On Windows, if we ARE the installed binary, we can't delete ourselves.
+            // Spawn a background cmd process that waits for us to exit, then cleans up.
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                Console.Error.WriteLine("The binary may still be locked. You can manually delete it:");
-                Console.Error.WriteLine($"  rmdir /s /q \"{binDir}\"");
+                try
+                {
+                    var pid = Environment.ProcessId;
+                    var script = $"/c timeout /t 2 /nobreak >nul & rmdir /s /q \"{binDir}\"";
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "cmd.exe",
+                        Arguments = script,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    });
+                    Console.WriteLine("Binary cleanup scheduled (will complete after this process exits).");
+                }
+                catch
+                {
+                    Console.Error.WriteLine($"Warning: Could not remove binary directory. You can manually delete it:");
+                    Console.Error.WriteLine($"  rmdir /s /q \"{binDir}\"");
+                }
+            }
+            else
+            {
+                Console.Error.WriteLine($"Warning: Could not remove binary directory: {binDir}");
             }
         }
     }
