@@ -42,6 +42,7 @@ public sealed class WindowsServiceInstaller(ILogger logger) : IServiceInstaller
                       <Count>999</Count>
                     </RestartOnFailure>
                     <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+                    <Hidden>true</Hidden>
                   </Settings>
                   <Actions>
                     <Exec>

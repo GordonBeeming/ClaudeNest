@@ -77,10 +77,9 @@ public class PairingController(NestDbContext db, TimeProvider timeProvider) : Co
             .Include(t => t.User)
             .ThenInclude(u => u.Account)
             .ThenInclude(a => a.Plan)
-            .FirstOrDefaultAsync(t => t.RedeemedAt == null && t.ExpiresAt > now);
+            .FirstOrDefaultAsync(t => t.TokenHash == tokenHash && t.RedeemedAt == null && t.ExpiresAt > now);
 
-        if (pairingToken is null ||
-            !CryptographicOperations.FixedTimeEquals(pairingToken.TokenHash, tokenHash))
+        if (pairingToken is null)
         {
             return BadRequest("Invalid or expired pairing token");
         }
