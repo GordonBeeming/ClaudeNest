@@ -21,6 +21,7 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
     public event Func<Task>? OnDeregister;
     public event Func<UpdateAvailableNotification, Task>? OnUpdateAvailable;
     public event Func<UpdateAvailableNotification, Task>? OnTriggerUpdate;
+    public event Func<string?, Task>? OnReconnected;
 
     public SignalRConnectionManager(AgentCredentials credentials, ILogger<SignalRConnectionManager> logger)
     {
@@ -79,16 +80,35 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
             return Task.CompletedTask;
         };
 
-        _connection.Reconnected += connectionId =>
+        _connection.Reconnected += async connectionId =>
         {
             _logger.LogInformation("SignalR reconnected with connection ID: {ConnectionId}", connectionId);
-            return Task.CompletedTask;
+            if (OnReconnected is not null)
+                await OnReconnected(connectionId);
         };
 
-        _connection.Closed += error =>
+        _connection.Closed += async error =>
         {
-            _logger.LogWarning(error, "SignalR connection closed");
-            return Task.CompletedTask;
+            _logger.LogWarning(error, "SignalR connection closed. Starting manual reconnection...");
+            var delay = TimeSpan.FromSeconds(5);
+            var maxDelay = TimeSpan.FromMinutes(5);
+            while (true)
+            {
+                try
+                {
+                    await Task.Delay(delay);
+                    await _connection.StartAsync();
+                    _logger.LogInformation("Manual reconnection successful");
+                    if (OnReconnected is not null)
+                        await OnReconnected(_connection.ConnectionId);
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Manual reconnection failed, retrying in {Delay}s...", delay.TotalSeconds);
+                    delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, maxDelay.TotalSeconds));
+                }
+            }
         };
 
         await _connection.StartAsync(cancellationToken);

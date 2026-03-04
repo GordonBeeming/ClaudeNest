@@ -28,6 +28,10 @@ param stripeWebhookSecret string
 @secure()
 param cloudflareTunnelToken string
 
+@description('The Azure SignalR connection string to store as a secret')
+@secure()
+param signalrConnectionString string
+
 @description('The resource ID of the Private Endpoints subnet')
 param peSubnetId string
 
@@ -109,6 +113,14 @@ resource cloudflareTunnelTokenSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-
   name: 'cloudflare-tunnel-token'
   properties: {
     value: cloudflareTunnelToken
+  }
+}
+
+resource signalrConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'azure-signalr-connection-string'
+  properties: {
+    value: signalrConnectionString
   }
 }
 

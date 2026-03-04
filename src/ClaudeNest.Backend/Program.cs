@@ -49,7 +49,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddSingleton(TimeProvider.System);
 
 // SignalR — use camelCase + string enums to match frontend expectations
-builder.Services.AddSignalR(options =>
+var signalRBuilder = builder.Services.AddSignalR(options =>
     {
         if (builder.Environment.IsDevelopment())
             options.EnableDetailedErrors = true;
@@ -59,6 +59,12 @@ builder.Services.AddSignalR(options =>
         options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });
+
+// Use Azure SignalR Service when configured
+if (!string.IsNullOrEmpty(builder.Configuration["Azure:SignalR:ConnectionString"]))
+{
+    signalRBuilder.AddAzureSignalR();
+}
 
 // Stripe
 builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection("Stripe"));
@@ -104,6 +110,10 @@ if (app.Environment.IsDevelopment())
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
     await DevDataSeeder.SeedAsync(db);
+    // Reset all agents to offline on startup (stale connections from previous run)
+    await db.Agents.Where(a => a.IsOnline).ExecuteUpdateAsync(s => s
+        .SetProperty(a => a.IsOnline, false)
+        .SetProperty(a => a.ConnectionId, (string?)null));
 }
 else
 {
@@ -111,6 +121,10 @@ else
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
     await db.Database.MigrateAsync();
+    // Reset all agents to offline on startup (stale connections from previous run)
+    await db.Agents.Where(a => a.IsOnline).ExecuteUpdateAsync(s => s
+        .SetProperty(a => a.IsOnline, false)
+        .SetProperty(a => a.ConnectionId, (string?)null));
 }
 
 // Sync plans to Stripe if configured (creates products + prices)

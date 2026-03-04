@@ -6,7 +6,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 const backendUrl = process.env.BACKEND_URL || "http://localhost:5000";
-const isServe = process.argv.includes("serve") || process.argv.includes("dev");
+const isServe = !process.argv.includes("build");
 
 // Re-use the trusted dotnet dev certificate for the Vite HTTPS server (dev only)
 const certDir = path.resolve(import.meta.dirname, ".cert");

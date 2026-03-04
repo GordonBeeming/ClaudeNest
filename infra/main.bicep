@@ -104,7 +104,24 @@ module sqlServer 'modules/sql-server.bicep' = {
 }
 
 // ============================================================================
-// Module 5: Key Vault (depends on Identity, SQL, VNet, DNS Zones)
+// Module 5: Azure SignalR Service (depends on Identity, VNet, DNS Zones)
+// ============================================================================
+
+module signalr 'modules/signalr.bicep' = {
+  name: 'signalr'
+  params: {
+    environmentName: environmentName
+    location: location
+    identityPrincipalId: managedIdentity.outputs.identityPrincipalId
+    identityClientId: managedIdentity.outputs.identityClientId
+    managedIdentityId: managedIdentity.outputs.identityId
+    peSubnetId: vnet.outputs.peSubnetId
+    signalrDnsZoneId: privateDnsZones.outputs.signalrDnsZoneId
+  }
+}
+
+// ============================================================================
+// Module 6: Key Vault (depends on Identity, SQL, SignalR, VNet, DNS Zones)
 // ============================================================================
 
 module keyVault 'modules/key-vault.bicep' = {
@@ -118,13 +135,14 @@ module keyVault 'modules/key-vault.bicep' = {
     stripeSecretKey: stripeSecretKey
     stripeWebhookSecret: stripeWebhookSecret
     cloudflareTunnelToken: cloudflareTunnelToken
+    signalrConnectionString: signalr.outputs.connectionString
     peSubnetId: vnet.outputs.peSubnetId
     kvDnsZoneId: privateDnsZones.outputs.kvDnsZoneId
   }
 }
 
 // ============================================================================
-// Module 6: Container Registry (depends on Identity)
+// Module 7: Container Registry (depends on Identity)
 // ============================================================================
 
 module containerRegistry 'modules/container-registry.bicep' = {
@@ -137,7 +155,7 @@ module containerRegistry 'modules/container-registry.bicep' = {
 }
 
 // ============================================================================
-// Module 7: Container Apps Environment (depends on VNet)
+// Module 8: Container Apps Environment (depends on VNet)
 // ============================================================================
 
 module containerAppsEnv 'modules/container-apps-env.bicep' = {
@@ -150,7 +168,7 @@ module containerAppsEnv 'modules/container-apps-env.bicep' = {
 }
 
 // ============================================================================
-// Module 8: Backend Container App (depends on Env + KV + ACR + Identity)
+// Module 9: Backend Container App (depends on Env + KV + ACR + Identity)
 // ============================================================================
 
 module backendApp 'modules/container-app-backend.bicep' = {
@@ -173,7 +191,7 @@ module backendApp 'modules/container-app-backend.bicep' = {
 }
 
 // ============================================================================
-// Module 9: Frontend Container App (depends on Env + ACR)
+// Module 10: Frontend Container App (depends on Env + ACR)
 // ============================================================================
 
 module frontendApp 'modules/container-app-frontend.bicep' = {
@@ -189,7 +207,7 @@ module frontendApp 'modules/container-app-frontend.bicep' = {
 }
 
 // ============================================================================
-// Module 10: Cloudflared Tunnel (depends on Env + KV)
+// Module 11: Cloudflared Tunnel (depends on Env + KV)
 // ============================================================================
 
 module cloudflared 'modules/cloudflared.bicep' = {

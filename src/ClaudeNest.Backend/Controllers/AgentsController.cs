@@ -131,9 +131,14 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext,
             IsForced = false
         };
 
-        if (NestHub.TryGetAgentConnectionId(agentId, out var connectionId))
+        var connId = await db.Agents
+            .Where(a => a.Id == agentId && a.IsOnline)
+            .Select(a => a.ConnectionId)
+            .FirstOrDefaultAsync();
+
+        if (connId is not null)
         {
-            await hubContext.Clients.Client(connectionId)
+            await hubContext.Clients.Client(connId)
                 .SendAsync("TriggerUpdate", notification);
             return Ok(new { message = "Update triggered" });
         }
@@ -230,11 +235,16 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext,
         if (agent is null) return NotFound();
 
         // If agent is online, send a best-effort Deregister command
-        if (NestHub.TryGetAgentConnectionId(agentId, out var connectionId))
+        var connIdForDeregister = await db.Agents
+            .Where(a => a.Id == agentId && a.IsOnline)
+            .Select(a => a.ConnectionId)
+            .FirstOrDefaultAsync();
+
+        if (connIdForDeregister is not null)
         {
             try
             {
-                await hubContext.Clients.Client(connectionId)
+                await hubContext.Clients.Client(connIdForDeregister)
                     .SendAsync("Deregister", new DeregisterCommand
                     {
                         AgentId = agentId,

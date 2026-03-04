@@ -87,6 +87,11 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
           keyVaultUrl: 'https://${kvName}.vault.azure.net/secrets/stripe-webhook-secret'
           identity: managedIdentityId
         }
+        {
+          name: 'azure-signalr-connection-string'
+          keyVaultUrl: 'https://${kvName}.vault.azure.net/secrets/azure-signalr-connection-string'
+          identity: managedIdentityId
+        }
       ]
     }
     template: {
@@ -95,8 +100,8 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'backend'
           image: imageName
           resources: {
-            cpu: json('0.25')
-            memory: '0.5Gi'
+            cpu: json('0.5')
+            memory: '1.0Gi'
           }
           env: [
             {
@@ -163,12 +168,16 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
               value: appInsightsConnectionString
             }
+            {
+              name: 'Azure__SignalR__ConnectionString'
+              secretRef: 'azure-signalr-connection-string'
+            }
           ]
         }
       ]
       scale: {
         minReplicas: 1
-        maxReplicas: 1
+        maxReplicas: 3
       }
     }
   }

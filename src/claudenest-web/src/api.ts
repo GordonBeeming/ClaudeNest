@@ -2,10 +2,15 @@ import type { AdminUserInfo, Agent, UserProfile, PlanInfo, AccountInfo, AgentCre
 
 const BASE = "/api";
 
-let _getAccessToken: (() => Promise<string | undefined>) | null = null;
+let _getAccessToken: ((forceRefresh?: boolean) => Promise<string | undefined>) | null = null;
+let _onAuthFailure: (() => void) | null = null;
 
-export function setAccessTokenGetter(getter: () => Promise<string | undefined>) {
+export function setAccessTokenGetter(getter: (forceRefresh?: boolean) => Promise<string | undefined>) {
   _getAccessToken = getter;
+}
+
+export function setOnAuthFailure(handler: () => void) {
+  _onAuthFailure = handler;
 }
 
 async function apiFetch<T>(
@@ -33,6 +38,29 @@ async function apiFetch<T>(
     ...options,
     headers,
   });
+
+  if (res.status === 401 && _getAccessToken) {
+    // Token may be expired — force refresh and retry once
+    try {
+      const freshToken = await _getAccessToken(true);
+      if (freshToken) {
+        headers["Authorization"] = `Bearer ${freshToken}`;
+        const retryRes = await fetch(`${BASE}${path}`, { ...options, headers });
+        if (retryRes.ok) {
+          if (retryRes.status === 204) return undefined as T;
+          return retryRes.json();
+        }
+        if (retryRes.status === 401) {
+          _onAuthFailure?.();
+        }
+        const text = await retryRes.text();
+        throw new Error(`API ${retryRes.status}: ${text}`);
+      }
+    } catch (refreshErr) {
+      if (refreshErr instanceof Error && refreshErr.message.startsWith("API ")) throw refreshErr;
+      _onAuthFailure?.();
+    }
+  }
 
   if (!res.ok) {
     const text = await res.text();

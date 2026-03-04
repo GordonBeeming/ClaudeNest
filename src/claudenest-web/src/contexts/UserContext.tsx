@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { getMe, setAccessTokenGetter } from "../api";
+import { getMe, setAccessTokenGetter, setOnAuthFailure } from "../api";
 import type { UserProfile, AccountInfo } from "../types";
 import { auth0Audience, isAuth0Configured } from "../config";
 
@@ -16,13 +16,19 @@ const UserContext = createContext<UserContextValue | null>(null);
 
 /** Wires Auth0 access token into the API layer. Renders nothing. */
 function Auth0TokenBridge() {
-  const { getAccessTokenSilently } = useAuth0();
+  const { getAccessTokenSilently, logout } = useAuth0();
 
   useEffect(() => {
-    setAccessTokenGetter(async () => {
-      return await getAccessTokenSilently({ authorizationParams: { audience: auth0Audience } });
+    setAccessTokenGetter(async (forceRefresh) => {
+      return await getAccessTokenSilently({
+        authorizationParams: { audience: auth0Audience },
+        ...(forceRefresh ? { cacheMode: 'off' as const } : {}),
+      });
     });
-  }, [getAccessTokenSilently]);
+    setOnAuthFailure(() => {
+      logout({ logoutParams: { returnTo: window.location.origin } });
+    });
+  }, [getAccessTokenSilently, logout]);
 
   return null;
 }

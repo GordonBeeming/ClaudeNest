@@ -35,8 +35,28 @@ resource kvDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@20
   }
 }
 
+resource signalrDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
+  name: 'privatelink.service.signalr.net'
+  location: 'global'
+}
+
+resource signalrDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = {
+  parent: signalrDnsZone
+  name: 'signalr-vnet-link'
+  location: 'global'
+  properties: {
+    virtualNetwork: {
+      id: vnetId
+    }
+    registrationEnabled: false
+  }
+}
+
 @description('The resource ID of the SQL private DNS zone')
 output sqlDnsZoneId string = sqlDnsZone.id
 
 @description('The resource ID of the Key Vault private DNS zone')
 output kvDnsZoneId string = kvDnsZone.id
+
+@description('The resource ID of the SignalR private DNS zone')
+output signalrDnsZoneId string = signalrDnsZone.id

@@ -13,6 +13,7 @@ public class Agent
     public string? AllowedPathsJson { get; set; }
     public string? Version { get; set; }
     public string? Architecture { get; set; }
+    public string? ConnectionId { get; set; }
 
     public Account Account { get; set; } = null!;
     public ICollection<AgentCredential> Credentials { get; set; } = [];

@@ -39,6 +39,39 @@ public class AgentWorker(
         _connectionManager = new SignalRConnectionManager(credentials, logFactory
             .CreateLogger<SignalRConnectionManager>());
 
+        // Re-register agent on reconnection
+        _connectionManager.OnReconnected += async _ =>
+        {
+            try
+            {
+                var result = await _connectionManager.RegisterAgentAsync(new AgentInfo
+                {
+                    AgentId = credentials.AgentId,
+                    Name = config.Name,
+                    Hostname = Environment.MachineName,
+                    OS = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows"
+                        : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "macos"
+                        : "linux",
+                    Version = typeof(AgentWorker).Assembly.GetName().Version?.ToString() ?? "0.0.0",
+                    Architecture = RuntimeInformation.ProcessArchitecture.ToString(),
+                    AllowedPaths = config.AllowedPaths
+                });
+                logger.LogInformation("Agent re-registered after reconnection");
+
+                // Report current sessions on reconnect
+                if (_sessionManager is not null)
+                {
+                    var currentSessions = _sessionManager.GetAllSessions();
+                    if (currentSessions.Count > 0)
+                        await _connectionManager.ReportAllSessionsAsync(credentials.AgentId, currentSessions);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to re-register after reconnection");
+            }
+        };
+
         // Wire up session status changes to SignalR
         _sessionManager.OnSessionStatusChanged += async update =>
         {

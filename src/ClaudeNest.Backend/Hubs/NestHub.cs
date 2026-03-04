@@ -6,14 +6,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ClaudeNest.Backend.Hubs;
 
-public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration configuration) : Hub
+public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration configuration, ILogger<NestHub> logger) : Hub
 {
     // --- Agent → Server ---
 
     public async Task<AgentRegistrationResult> RegisterAgent(AgentInfo agentInfo)
     {
         var connectionId = Context.ConnectionId;
-        AgentConnectionMap.AddOrUpdate(agentInfo.AgentId, connectionId);
 
         await Groups.AddToGroupAsync(connectionId, $"agent:{agentInfo.AgentId}");
 
@@ -26,6 +25,7 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
         if (agent is not null)
         {
             agent.IsOnline = true;
+            agent.ConnectionId = connectionId;
             agent.LastSeenAt = timeProvider.GetUtcNow();
             if (agentInfo.Name is not null)
                 agent.Name = agentInfo.Name;
@@ -89,11 +89,11 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
 
     public async Task DirectoryListing(DirectoryListingResponse response)
     {
-        if (PendingRequests.TryRemove(response.RequestId, out var webConnectionId))
-        {
-            await Clients.Client(webConnectionId)
-                .SendAsync("DirectoryListingResult", response);
-        }
+        await Clients.Group($"request:{response.RequestId}")
+            .SendAsync("DirectoryListingResult", response);
+        // Clean up — remove all connections from the request group
+        // (The caller is the agent, not in the group, so this is a best-effort cleanup;
+        //  the web client will also be removed when it disconnects)
     }
 
     public async Task ReportAllSessions(Guid agentId, List<SessionStatusUpdate> sessions)
@@ -110,16 +110,18 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
 
     public async Task Heartbeat()
     {
-        // Update agent last seen time
-        var agentId = AgentConnectionMap.GetAgentByConnection(Context.ConnectionId);
-        if (agentId.HasValue)
+        var connectionId = Context.ConnectionId;
+        var agent = await db.Agents
+            .AsTracking()
+            .FirstOrDefaultAsync(a => a.ConnectionId == connectionId);
+        if (agent is not null)
         {
-            var agent = await db.Agents.FindAsync(agentId.Value);
-            if (agent is not null)
-            {
-                agent.LastSeenAt = timeProvider.GetUtcNow();
-                await db.SaveChangesAsync();
-            }
+            agent.LastSeenAt = timeProvider.GetUtcNow();
+            await db.SaveChangesAsync();
+        }
+        else
+        {
+            logger.LogWarning("Heartbeat received from unknown connection {ConnectionId}", connectionId);
         }
     }
 
@@ -133,9 +135,16 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
     public async Task RequestDirectoryListing(Guid agentId, string path)
     {
         var requestId = Guid.NewGuid().ToString();
-        PendingRequests.TryAdd(requestId, Context.ConnectionId);
 
-        if (AgentConnectionMap.TryGetConnectionId(agentId, out var agentConnectionId))
+        // Add the calling web client to a group for this request
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"request:{requestId}");
+
+        var agentConnectionId = await db.Agents
+            .Where(a => a.Id == agentId && a.IsOnline)
+            .Select(a => a.ConnectionId)
+            .FirstOrDefaultAsync();
+
+        if (agentConnectionId is not null)
         {
             await Clients.Client(agentConnectionId)
                 .SendAsync("ListDirectories", requestId, path);
@@ -225,7 +234,12 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
 
         var permissionMode = agent?.Account?.PermissionMode ?? "default";
 
-        if (AgentConnectionMap.TryGetConnectionId(agentId, out var agentConnectionId))
+        var agentConnectionId = await db.Agents
+            .Where(a => a.Id == agentId && a.IsOnline)
+            .Select(a => a.ConnectionId)
+            .FirstOrDefaultAsync();
+
+        if (agentConnectionId is not null)
         {
             await Clients.Client(agentConnectionId)
                 .SendAsync("StartSession", sessionId, path, permissionMode);
@@ -234,7 +248,12 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
 
     public async Task RequestStopSession(Guid agentId, Guid sessionId)
     {
-        if (AgentConnectionMap.TryGetConnectionId(agentId, out var agentConnectionId))
+        var agentConnectionId = await db.Agents
+            .Where(a => a.Id == agentId && a.IsOnline)
+            .Select(a => a.ConnectionId)
+            .FirstOrDefaultAsync();
+
+        if (agentConnectionId is not null)
         {
             await Clients.Client(agentConnectionId)
                 .SendAsync("StopSession", sessionId);
@@ -243,7 +262,12 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
 
     public async Task RequestGetSessions(Guid agentId)
     {
-        if (AgentConnectionMap.TryGetConnectionId(agentId, out var agentConnectionId))
+        var agentConnectionId = await db.Agents
+            .Where(a => a.Id == agentId && a.IsOnline)
+            .Select(a => a.ConnectionId)
+            .FirstOrDefaultAsync();
+
+        if (agentConnectionId is not null)
         {
             await Clients.Client(agentConnectionId)
                 .SendAsync("GetSessions");
@@ -252,111 +276,23 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        var agentId = AgentConnectionMap.GetAgentByConnection(Context.ConnectionId);
-        AgentConnectionMap.RemoveByConnection(Context.ConnectionId);
+        var connId = Context.ConnectionId;
+        var agent = await db.Agents
+            .AsTracking()
+            .FirstOrDefaultAsync(a => a.ConnectionId == connId);
 
-        if (agentId.HasValue)
+        if (agent is not null)
         {
-            // Mark agent offline in DB
-            var agent = await db.Agents.FindAsync(agentId.Value);
-            if (agent is not null)
-            {
-                agent.IsOnline = false;
-                agent.LastSeenAt = timeProvider.GetUtcNow();
-                await db.SaveChangesAsync();
-            }
+            agent.IsOnline = false;
+            agent.ConnectionId = null;
+            agent.LastSeenAt = timeProvider.GetUtcNow();
+            await db.SaveChangesAsync();
 
             // Notify web clients
-            await Clients.Group($"user:{agentId.Value}")
-                .SendAsync("AgentStatusChanged", agentId.Value, false);
+            await Clients.Group($"user:{agent.Id}")
+                .SendAsync("AgentStatusChanged", agent.Id, false);
         }
 
         await base.OnDisconnectedAsync(exception);
-    }
-
-    // In-memory mappings (will move to a proper service later for multi-instance support)
-    private static readonly AgentConnectionMap AgentConnectionMap = new();
-    private static readonly PendingRequestMap PendingRequests = new();
-
-    /// <summary>
-    /// Allows controllers to check if an agent is connected and get its connection ID.
-    /// </summary>
-    public static bool TryGetAgentConnectionId(Guid agentId, out string connectionId)
-        => AgentConnectionMap.TryGetConnectionId(agentId, out connectionId);
-}
-
-internal sealed class AgentConnectionMap
-{
-    private readonly Dictionary<Guid, string> _agentToConnection = new();
-    private readonly Dictionary<string, Guid> _connectionToAgent = new();
-    private readonly Lock _lock = new();
-
-    public void AddOrUpdate(Guid agentId, string connectionId)
-    {
-        lock (_lock)
-        {
-            if (_agentToConnection.TryGetValue(agentId, out var oldConn))
-            {
-                _connectionToAgent.Remove(oldConn);
-            }
-
-            _agentToConnection[agentId] = connectionId;
-            _connectionToAgent[connectionId] = agentId;
-        }
-    }
-
-    public bool TryGetConnectionId(Guid agentId, out string connectionId)
-    {
-        lock (_lock)
-        {
-            return _agentToConnection.TryGetValue(agentId, out connectionId!);
-        }
-    }
-
-    public Guid? GetAgentByConnection(string connectionId)
-    {
-        lock (_lock)
-        {
-            return _connectionToAgent.TryGetValue(connectionId, out var agentId) ? agentId : null;
-        }
-    }
-
-    public void RemoveByConnection(string connectionId)
-    {
-        lock (_lock)
-        {
-            if (_connectionToAgent.TryGetValue(connectionId, out var agentId))
-            {
-                _connectionToAgent.Remove(connectionId);
-                _agentToConnection.Remove(agentId);
-            }
-        }
-    }
-}
-
-internal sealed class PendingRequestMap
-{
-    private readonly Dictionary<string, string> _requests = new();
-    private readonly Lock _lock = new();
-
-    public void TryAdd(string requestId, string connectionId)
-    {
-        lock (_lock)
-        {
-            _requests[requestId] = connectionId;
-        }
-    }
-
-    public bool TryRemove(string requestId, out string connectionId)
-    {
-        lock (_lock)
-        {
-            if (_requests.TryGetValue(requestId, out connectionId!))
-            {
-                _requests.Remove(requestId);
-                return true;
-            }
-            return false;
-        }
     }
 }
