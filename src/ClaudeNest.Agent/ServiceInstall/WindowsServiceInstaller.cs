@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security;
 
 namespace ClaudeNest.Agent.ServiceInstall;
 
@@ -10,19 +11,70 @@ public sealed class WindowsServiceInstaller(ILogger logger) : IServiceInstaller
     {
         try
         {
-            var result = await RunCommandAsync("schtasks",
-                $"/create /tn \"{TaskName}\" /tr \"\\\"{binaryPath}\\\" run\" /sc onlogon /rl limited /f", ct);
+            var username = $@"{Environment.UserDomainName}\{Environment.UserName}";
+            var xml = $"""
+                <?xml version="1.0" encoding="UTF-16"?>
+                <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+                  <RegistrationInfo>
+                    <Description>ClaudeNest Agent - Remote launcher for Claude Code sessions</Description>
+                  </RegistrationInfo>
+                  <Triggers>
+                    <LogonTrigger>
+                      <Enabled>true</Enabled>
+                      <UserId>{SecurityElement.Escape(username)}</UserId>
+                    </LogonTrigger>
+                  </Triggers>
+                  <Principals>
+                    <Principal>
+                      <UserId>{SecurityElement.Escape(username)}</UserId>
+                      <LogonType>InteractiveToken</LogonType>
+                      <RunLevel>LeastPrivilege</RunLevel>
+                    </Principal>
+                  </Principals>
+                  <Settings>
+                    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+                    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+                    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+                    <AllowStartOnDemand>true</AllowStartOnDemand>
+                    <Enabled>true</Enabled>
+                    <RestartOnFailure>
+                      <Interval>PT1M</Interval>
+                      <Count>999</Count>
+                    </RestartOnFailure>
+                    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+                  </Settings>
+                  <Actions>
+                    <Exec>
+                      <Command>{SecurityElement.Escape(binaryPath)}</Command>
+                      <Arguments>run</Arguments>
+                    </Exec>
+                  </Actions>
+                </Task>
+                """;
 
-            if (!result)
+            var tempFile = Path.Combine(Path.GetTempPath(), $"claudenest-task-{Guid.NewGuid():N}.xml");
+            try
             {
-                logger.LogWarning("schtasks /create returned non-zero exit code");
-                return false;
+                await File.WriteAllTextAsync(tempFile, xml, System.Text.Encoding.Unicode, ct);
+                var result = await RunCommandAsync("schtasks",
+                    $"/create /tn \"{TaskName}\" /xml \"{tempFile}\" /f", ct);
+
+                if (!result)
+                {
+                    logger.LogError(
+                        "Failed to create scheduled task. On Windows, install must be run from an elevated (Administrator) terminal");
+                    return false;
+                }
+            }
+            finally
+            {
+                try { File.Delete(tempFile); } catch { }
             }
 
             // Start the task immediately
             await RunCommandAsync("schtasks", $"/run /tn \"{TaskName}\"", ct);
 
-            logger.LogInformation("Windows scheduled task installed and started");
+            logger.LogInformation("Windows scheduled task installed with restart-on-failure and started");
             return true;
         }
         catch (Exception ex)
@@ -36,7 +88,6 @@ public sealed class WindowsServiceInstaller(ILogger logger) : IServiceInstaller
     {
         try
         {
-            // End the task if running
             await RunCommandAsync("schtasks", $"/end /tn \"{TaskName}\"", ct);
             await RunCommandAsync("schtasks", $"/delete /tn \"{TaskName}\" /f", ct);
 
@@ -55,7 +106,6 @@ public sealed class WindowsServiceInstaller(ILogger logger) : IServiceInstaller
         try
         {
             await RunCommandAsync("schtasks", $"/end /tn \"{TaskName}\"", ct);
-            // Brief pause to let process exit
             await Task.Delay(1000, ct);
             await RunCommandAsync("schtasks", $"/run /tn \"{TaskName}\"", ct);
 

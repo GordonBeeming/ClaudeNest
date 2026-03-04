@@ -671,12 +671,32 @@ static async Task<int> InstallBinaryAndService(AgentCredentials credentials, str
         }
         else
         {
-            Console.WriteLine("Warning: Service registration failed. The agent will run in the foreground.");
+            if (isWindows)
+            {
+                Console.Error.WriteLine();
+                Console.Error.WriteLine("Service registration failed. On Windows, install requires an elevated (Administrator) terminal.");
+                Console.Error.WriteLine("The agent has been paired — re-run install from an Administrator terminal to register the service.");
+                Console.Error.WriteLine("Or run 'claudenest-agent run' to start the agent in the foreground.");
+            }
+            else
+            {
+                Console.WriteLine("Warning: Service registration failed. The agent will run in the foreground.");
+            }
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"Warning: Could not register as a service ({ex.Message}). The agent will run in the foreground.");
+        if (isWindows)
+        {
+            Console.Error.WriteLine();
+            Console.Error.WriteLine($"Service registration failed: {ex.Message}");
+            Console.Error.WriteLine("On Windows, install requires an elevated (Administrator) terminal.");
+            Console.Error.WriteLine("The agent has been paired — re-run install from an Administrator terminal to register the service.");
+        }
+        else
+        {
+            Console.WriteLine($"Warning: Could not register as a service ({ex.Message}). The agent will run in the foreground.");
+        }
     }
 
     Console.WriteLine($"Agent paired successfully! Agent ID: {credentials.AgentId}");
