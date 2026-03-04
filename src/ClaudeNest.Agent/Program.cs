@@ -473,6 +473,28 @@ static async Task<int> HandleAddPathsAsync(AgentCredentials credentials, NestCon
         if (installer.IsInstalled())
         {
             await installer.UninstallAsync();
+
+            // Kill lingering agent processes on Windows so binary isn't file-locked
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                try
+                {
+                    var currentPid = Environment.ProcessId;
+                    foreach (var proc in Process.GetProcessesByName("claudenest-agent"))
+                    {
+                        if (proc.Id != currentPid)
+                        {
+                            proc.Kill(entireProcessTree: true);
+                            proc.WaitForExit(5000);
+                        }
+                        proc.Dispose();
+                    }
+                }
+                catch { /* best effort */ }
+
+                await Task.Delay(1000);
+            }
+
             var binaryPath = existingConfig.InstalledBinaryPath
                 ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest", "bin",
                     RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "claudenest-agent.exe" : "claudenest-agent");
@@ -997,6 +1019,39 @@ static async Task<int> HandleUpdateAsync()
         return 1;
     }
 
+    // Stop the service BEFORE copying the binary (on Windows the running exe is file-locked)
+    using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+    var serviceLogger = loggerFactory.CreateLogger("ServiceInstaller");
+    var installer = ServiceInstallerFactory.Create(serviceLogger);
+    var wasInstalled = installer.IsInstalled();
+
+    if (wasInstalled)
+    {
+        Console.WriteLine("Stopping agent service...");
+        await installer.UninstallAsync();
+
+        // Kill any lingering agent processes on Windows
+        if (isWindows)
+        {
+            try
+            {
+                var currentPid = Environment.ProcessId;
+                foreach (var proc in Process.GetProcessesByName("claudenest-agent"))
+                {
+                    if (proc.Id != currentPid)
+                    {
+                        proc.Kill(entireProcessTree: true);
+                        proc.WaitForExit(5000);
+                    }
+                    proc.Dispose();
+                }
+            }
+            catch { /* best effort */ }
+
+            await Task.Delay(1000);
+        }
+    }
+
     // Copy current binary to installed location
     if (currentBinaryPath != binaryPath)
     {
@@ -1018,15 +1073,10 @@ static async Task<int> HandleUpdateAsync()
         Console.WriteLine("Already running from the installed location. No binary update needed.");
     }
 
-    // Restart the service
-    using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
-    var serviceLogger = loggerFactory.CreateLogger("ServiceInstaller");
-    var installer = ServiceInstallerFactory.Create(serviceLogger);
-
-    if (installer.IsInstalled())
+    // Re-register and start the service
+    if (wasInstalled)
     {
-        Console.WriteLine("Restarting agent service...");
-        await installer.UninstallAsync();
+        Console.WriteLine("Starting agent service...");
         await installer.InstallAsync(binaryPath);
         Console.WriteLine("Agent updated and restarted successfully.");
     }
@@ -1065,6 +1115,29 @@ static async Task<int> HandleUninstallAsync()
         Console.Error.WriteLine($"Warning: Could not remove service: {ex.Message}");
     }
 
+    // Kill any lingering agent processes (on Windows, schtasks /end may not kill immediately)
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+    {
+        try
+        {
+            var currentPid = Environment.ProcessId;
+            foreach (var proc in Process.GetProcessesByName("claudenest-agent"))
+            {
+                if (proc.Id != currentPid)
+                {
+                    Console.WriteLine($"Stopping agent process (PID {proc.Id})...");
+                    proc.Kill(entireProcessTree: true);
+                    proc.WaitForExit(5000);
+                }
+                proc.Dispose();
+            }
+        }
+        catch { /* best effort */ }
+
+        // Brief delay to let OS release file handles
+        await Task.Delay(1000);
+    }
+
     // Remove installed binary
     var claudeNestDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest");
     var binDir = Path.Combine(claudeNestDir, "bin");
@@ -1078,6 +1151,11 @@ static async Task<int> HandleUninstallAsync()
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Warning: Could not remove binary directory: {ex.Message}");
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                Console.Error.WriteLine("The binary may still be locked. You can manually delete it:");
+                Console.Error.WriteLine($"  rmdir /s /q \"{binDir}\"");
+            }
         }
     }
 
