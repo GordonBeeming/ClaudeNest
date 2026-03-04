@@ -66,7 +66,7 @@ function ColorPicker({
   return (
     <div
       ref={ref}
-      className="absolute right-0 top-full z-50 mt-1 rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-800"
+      className="absolute right-0 top-full z-50 mt-1 min-w-max rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-800"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="grid grid-cols-5 gap-1.5">
