@@ -26,6 +26,7 @@ const PLATFORMS: Record<Platform, PlatformConfig> = {
     ],
     installNotes: [
       "Run the install command in an elevated (Administrator) PowerShell",
+      "The Windows binary is not yet code-signed — your browser may warn on download, click \"Keep\" to save the file",
       "The agent will be installed as a Windows Service",
     ],
   },
@@ -85,12 +86,10 @@ function getLocalBuildRidsForPlatform(platform: Platform, availableRids: string[
 
 function installCommand(filename: string, token: string, backendUrl: string, options?: { localBuild?: boolean; devWorkspacePath?: string | null }): string {
   const isWindows = filename.endsWith(".exe");
-  const isMac = filename.includes("osx-");
   const pathArg = options?.devWorkspacePath ? ` --path "${options.devWorkspacePath}"` : "";
   const run = `./${filename} install --token ${token} --backend ${backendUrl}${pathArg}`;
   if (isWindows) return run;
-  const quarantine = isMac ? `xattr -d com.apple.quarantine ./${filename} 2>/dev/null; ` : "";
-  return `${quarantine}chmod +x ./${filename} && ${run}`;
+  return `chmod +x ./${filename} && ${run}`;
 }
 
 function CopyButton({ text }: { text: string }) {
