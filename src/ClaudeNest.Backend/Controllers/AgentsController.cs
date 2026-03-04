@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ClaudeNest.Backend.Data;
 using ClaudeNest.Backend.Data.Entities;
 using ClaudeNest.Backend.Hubs;
@@ -15,7 +16,7 @@ namespace ClaudeNest.Backend.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext, TimeProvider timeProvider, IConfiguration configuration) : ControllerBase
+public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext, TimeProvider timeProvider, IConfiguration configuration, IHttpClientFactory httpClientFactory) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAgents()
@@ -123,11 +124,46 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext,
 
         if (agent is null) return NotFound();
 
-        var version = configuration["Agent:LatestVersion"] ?? "1.0.0";
+        var repoOwner = configuration["Agent:GitHubRepoOwner"] ?? "gordonbeeming";
+        var repoName = configuration["Agent:GitHubRepoName"] ?? "ClaudeNest";
+
+        // Fetch latest release from GitHub API
+        var version = configuration["Agent:LatestVersion"];
+        string? downloadUrl = null;
+
+        if (string.IsNullOrEmpty(version) || version == "1.0.0")
+        {
+            try
+            {
+                var http = httpClientFactory.CreateClient();
+                http.DefaultRequestHeaders.Add("User-Agent", "ClaudeNest-Backend");
+                http.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");
+
+                var response = await http.GetAsync($"https://api.github.com/repos/{repoOwner}/{repoName}/releases?per_page=10");
+                response.EnsureSuccessStatusCode();
+
+                var releases = await response.Content.ReadFromJsonAsync<List<GitHubRelease>>();
+                var agentRelease = releases?.FirstOrDefault(r => r.TagName?.StartsWith("agent-v") == true);
+
+                if (agentRelease is not null)
+                {
+                    version = agentRelease.TagName!["agent-v".Length..];
+                    downloadUrl = $"https://github.com/{repoOwner}/{repoName}/releases/download/{agentRelease.TagName}/";
+                }
+            }
+            catch
+            {
+                // Fall back to config
+            }
+        }
+
+        version ??= "1.0.0";
+        downloadUrl ??= $"https://github.com/{repoOwner}/{repoName}/releases/download/agent-v{version}/";
+
         var notification = new UpdateAvailableNotification
         {
             LatestVersion = version,
-            DownloadUrl = $"https://github.com/gordonbeeming/ClaudeNest/releases/download/agent-v{version}/",
+            DownloadUrl = downloadUrl,
             IsForced = false
         };
 
@@ -144,6 +180,12 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext,
         }
 
         return BadRequest(new { message = "Agent is offline" });
+    }
+
+    private sealed class GitHubRelease
+    {
+        [JsonPropertyName("tag_name")]
+        public string? TagName { get; init; }
     }
 
     [HttpGet("{agentId:guid}/credentials")]
