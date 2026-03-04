@@ -28,7 +28,7 @@ public class AccountController(NestDbContext db, IStripeService stripeService, T
         var account = user.Account;
         var agentCount = await db.Agents.CountAsync(a => a.AccountId == account.Id);
         var activeSessionCount = await db.Sessions.CountAsync(s =>
-            s.Agent.AccountId == account.Id &&
+            s.Agent.AccountId == account.Id && s.Agent.IsOnline &&
             (s.State == "Running" || s.State == "Starting" || s.State == "Requested"));
 
         // Check for active coupon redemptions
@@ -193,7 +193,7 @@ public class AccountController(NestDbContext db, IStripeService stripeService, T
 
         var localAgentCount = await db.Agents.CountAsync(a => a.AccountId == account.Id);
         var localActiveSessionCount = await db.Sessions.CountAsync(s =>
-            s.Agent.AccountId == account.Id &&
+            s.Agent.AccountId == account.Id && s.Agent.IsOnline &&
             (s.State == "Running" || s.State == "Starting" || s.State == "Requested"));
 
         return Ok(new

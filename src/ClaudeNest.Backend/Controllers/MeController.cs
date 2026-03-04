@@ -116,7 +116,7 @@ public class MeController(NestDbContext db, IConfiguration config, IHttpClientFa
         var account2 = user.Account;
         var meAgentCount = await db.Agents.CountAsync(a => a.AccountId == account2.Id);
         var meActiveSessionCount = await db.Sessions.CountAsync(s =>
-            s.Agent.AccountId == account2.Id &&
+            s.Agent.AccountId == account2.Id && s.Agent.IsOnline &&
             (s.State == "Running" || s.State == "Starting" || s.State == "Requested"));
 
         return Ok(new

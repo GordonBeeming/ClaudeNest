@@ -230,7 +230,7 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
             // Check account-wide session count
             var maxSessions = agent.Account.Plan?.MaxSessions ?? 0;
             var activeSessionCount = await db.Sessions.CountAsync(s =>
-                s.Agent.AccountId == agent.AccountId &&
+                s.Agent.AccountId == agent.AccountId && s.Agent.IsOnline &&
                 (s.State == "Running" || s.State == "Starting" || s.State == "Requested"));
 
             if (activeSessionCount >= maxSessions)
