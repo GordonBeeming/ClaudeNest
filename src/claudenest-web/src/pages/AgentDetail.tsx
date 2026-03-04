@@ -332,7 +332,7 @@ export function AgentDetail() {
     setRemoving(true);
     try {
       await deleteAgent(agentId);
-      navigate("/");
+      navigate("/dashboard");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to remove agent");
       setRemoving(false);
@@ -361,7 +361,7 @@ export function AgentDetail() {
       <div className="py-8 text-center">
         <p className="text-red-500">{error || "Agent not found"}</p>
         <Link
-          to="/"
+          to="/dashboard"
           className="mt-4 inline-flex items-center gap-1 text-sm text-nest-500 hover:text-nest-600"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -374,7 +374,7 @@ export function AgentDetail() {
   return (
     <div>
       <Link
-        to="/"
+        to="/dashboard"
         className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
       >
         <ChevronLeft className="h-4 w-4" />

@@ -249,7 +249,7 @@ export function Users() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center gap-3">
         <UsersRound className="h-6 w-6 text-nest-500" />
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">User Management</h1>

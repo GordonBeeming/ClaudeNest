@@ -1,0 +1,62 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened?
+      placeholder: Describe the bug clearly and concisely.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should have happened instead?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment-os
+    attributes:
+      label: Agent OS
+      description: If applicable, which OS is the agent running on?
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - N/A
+    validations:
+      required: false
+
+  - type: input
+    id: agent-version
+    attributes:
+      label: Agent Version
+      description: Version of the ClaudeNest agent (if applicable)
+      placeholder: e.g. 1.0.0
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Screenshots, logs, or any other helpful information.
+    validations:
+      required: false

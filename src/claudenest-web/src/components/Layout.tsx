@@ -7,6 +7,7 @@ import { SignalRContext } from "../contexts/SignalRContext";
 import { useUserContext } from "../contexts/UserContext";
 import { isAuth0Configured } from "../config";
 import { PastDueBanner } from "./PastDueBanner";
+import { Footer } from "./Footer";
 
 /** Sign out button — only rendered when Auth0 is active (inside Auth0Provider). */
 function Auth0SignOutButton({ onClose }: { onClose: () => void }) {
@@ -150,11 +151,11 @@ export function Layout() {
 
   return (
     <SignalRContext.Provider value={signalR}>
-      <div className="min-h-screen">
+      <div className="flex min-h-screen flex-col">
         <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/80 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-950/80">
           <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
             <Link
-              to="/"
+              to="/dashboard"
               className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white"
             >
               <Bird className="h-6 w-6 text-nest-500" />
@@ -179,10 +180,12 @@ export function Layout() {
           </div>
         </header>
 
-        <main className="mx-auto max-w-5xl px-4 py-6">
+        <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
           <PastDueBanner />
           <Outlet />
         </main>
+
+        <Footer />
       </div>
     </SignalRContext.Provider>
   );

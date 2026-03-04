@@ -5,15 +5,17 @@ import { Dashboard } from "./pages/Dashboard";
 import { AgentDetail } from "./pages/AgentDetail";
 import { PlanSelection } from "./pages/PlanSelection";
 import { AccountPage } from "./pages/AccountPage";
+import { HomePage } from "./pages/HomePage";
+import { PrivacyPolicy } from "./pages/PrivacyPolicy";
 import { CouponManagement } from "./pages/admin/CouponManagement";
 import { CompanyDeals } from "./pages/admin/CompanyDeals";
 import { Users } from "./pages/admin/Users";
 import { UserProvider, useUserContext } from "./contexts/UserContext";
-import { RefreshCw, Bird } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { auth0Domain, auth0ClientId, auth0Audience, isAuth0Configured } from "./config";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, loginWithRedirect } = useAuth0();
+  const { isAuthenticated, isLoading } = useAuth0();
 
   if (isLoading) {
     return (
@@ -25,25 +27,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-6">
-        <Bird className="h-16 w-16 text-nest-500" />
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Welcome to ClaudeNest
-          </h1>
-          <p className="mt-2 text-gray-500 dark:text-gray-400">
-            Sign in to manage your agents and sessions.
-          </p>
-        </div>
-        <button
-          onClick={() => loginWithRedirect()}
-          className="rounded-lg bg-nest-500 px-6 py-2.5 text-sm font-semibold text-white hover:bg-nest-600 transition-colors"
-        >
-          Sign in
-        </button>
-      </div>
-    );
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
@@ -79,18 +63,44 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAdmin) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;
 }
 
-function AppRoutes() {
+/** Smart wrapper for /plans: redirect authenticated users with active sub to dashboard */
+function SmartPlanSelection() {
+  const { user, loading } = useUserContext();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <RefreshCw className="h-5 w-5 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  const hasActiveSub =
+    user?.account?.hasStripeSubscription &&
+    (user.account.subscriptionStatus === "Active" ||
+      user.account.subscriptionStatus === "Trialing" ||
+      user.account.subscriptionStatus === "PastDue") &&
+    !user.account.cancelAtPeriodEnd;
+
+  if (user?.account?.planId && hasActiveSub) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <PlanSelection />;
+}
+
+function AuthenticatedRoutes() {
   return (
     <UserProvider>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/plans" element={<PlanSelection />} />
+          <Route path="/plans" element={<SmartPlanSelection />} />
           <Route
             path="/account"
             element={
@@ -100,7 +110,7 @@ function AppRoutes() {
             }
           />
           <Route
-            index
+            path="/dashboard"
             element={
               <RequirePlan>
                 <Dashboard />
@@ -145,6 +155,27 @@ function AppRoutes() {
   );
 }
 
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route index element={<HomePage />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
+      {isAuth0Configured ? (
+        <Route
+          path="/*"
+          element={
+            <RequireAuth>
+              <AuthenticatedRoutes />
+            </RequireAuth>
+          }
+        />
+      ) : (
+        <Route path="/*" element={<AuthenticatedRoutes />} />
+      )}
+    </Routes>
+  );
+}
+
 export default function App() {
   const inner = (
     <BrowserRouter>
@@ -159,9 +190,7 @@ export default function App() {
             audience: auth0Audience,
           }}
         >
-          <RequireAuth>
-            <AppRoutes />
-          </RequireAuth>
+          <AppRoutes />
         </Auth0Provider>
       ) : (
         <AppRoutes />
