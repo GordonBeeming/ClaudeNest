@@ -49,7 +49,7 @@ resource signalr 'Microsoft.SignalRService/signalR@2024-03-01' = {
         value: 'True'
       }
     ]
-    publicNetworkAccess: 'Disabled'
+    publicNetworkAccess: 'Enabled'
   }
 }
 
