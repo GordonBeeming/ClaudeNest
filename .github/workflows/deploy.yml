@@ -5,18 +5,22 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/workflows/deploy.yml'
-      - 'src/ClaudeNest.Backend/**'
-      - 'src/ClaudeNest.Shared/**'
-      - 'src/ClaudeNest.ServiceDefaults/**'
-      - 'src/claudenest-web/**'
+      - ".github/workflows/deploy.yml"
+      - "src/ClaudeNest.Backend/**"
+      - "src/ClaudeNest.Shared/**"
+      - "src/ClaudeNest.ServiceDefaults/**"
+      - "src/claudenest-web/**"
 
 permissions:
   id-token: write
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 env:
-  VERSION: '' # set dynamically in determine-version job
+  VERSION: "" # set dynamically in determine-version job
 
 jobs:
   determine-version:

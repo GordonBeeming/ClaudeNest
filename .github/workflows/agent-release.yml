@@ -5,13 +5,17 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/workflows/agent-release.yml'
-      - 'src/ClaudeNest.Agent/**'
-      - 'src/ClaudeNest.Shared/**'
-      - 'src/ClaudeNest.ServiceDefaults/**'
+      - ".github/workflows/agent-release.yml"
+      - "src/ClaudeNest.Agent/**"
+      - "src/ClaudeNest.Shared/**"
+      - "src/ClaudeNest.ServiceDefaults/**"
 
 permissions:
   contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: false
 
 jobs:
   determine-version:
@@ -61,7 +65,7 @@ jobs:
       - name: Setup .NET 10
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: "10.0.x"
 
       - name: Install Aspire workload
         run: dotnet workload install aspire
