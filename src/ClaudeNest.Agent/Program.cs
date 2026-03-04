@@ -115,6 +115,26 @@ static void HideConsoleWindow()
     }
 }
 
+static void KillOtherAgentProcesses()
+{
+    try
+    {
+        var currentPid = Environment.ProcessId;
+        foreach (var proc in Process.GetProcessesByName("claudenest-agent"))
+        {
+            if (proc.Id != currentPid)
+            {
+                proc.Kill(entireProcessTree: true);
+                proc.WaitForExit(5000);
+            }
+            proc.Dispose();
+        }
+    }
+    catch { /* best effort */ }
+
+    Thread.Sleep(1000);
+}
+
 static async Task<bool> ValidateAgentCredentialsAsync(AgentCredentials credentials)
 {
     try
@@ -505,22 +525,7 @@ static async Task<int> HandleAddPathsAsync(AgentCredentials credentials, NestCon
             // Kill lingering agent processes on Windows so binary isn't file-locked
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                try
-                {
-                    var currentPid = Environment.ProcessId;
-                    foreach (var proc in Process.GetProcessesByName("claudenest-agent"))
-                    {
-                        if (proc.Id != currentPid)
-                        {
-                            proc.Kill(entireProcessTree: true);
-                            proc.WaitForExit(5000);
-                        }
-                        proc.Dispose();
-                    }
-                }
-                catch { /* best effort */ }
-
-                await Task.Delay(1000);
+                KillOtherAgentProcesses();
             }
 
             var binaryPath = existingConfig.InstalledBinaryPath
@@ -663,6 +668,12 @@ static async Task<int> InstallBinaryAndService(AgentCredentials credentials, str
 
     if (currentBinaryPath is not null && currentBinaryPath != installedBinaryPath)
     {
+        // Kill lingering agent processes on Windows so binary isn't file-locked
+        if (isWindows)
+        {
+            KillOtherAgentProcesses();
+        }
+
         Console.WriteLine($"Copying agent binary to {installedBinaryPath}...");
         File.Copy(currentBinaryPath, installedBinaryPath, overwrite: true);
 
