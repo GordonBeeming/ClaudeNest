@@ -186,7 +186,8 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
                         Path = path,
                         State = Shared.Enums.SessionState.Crashed,
                         StartedAt = now.UtcDateTime,
-                        EndedAt = now.UtcDateTime
+                        EndedAt = now.UtcDateTime,
+                        ErrorMessage = $"Subscription is not active (status: {status}). Please update your plan."
                     });
                 return;
             }
@@ -206,7 +207,8 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
                             Path = path,
                             State = Shared.Enums.SessionState.Crashed,
                             StartedAt = now.UtcDateTime,
-                            EndedAt = now.UtcDateTime
+                            EndedAt = now.UtcDateTime,
+                            ErrorMessage = "Your trial has expired. Please subscribe to a plan."
                         });
                     return;
                 }
@@ -228,7 +230,8 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
                         Path = path,
                         State = Shared.Enums.SessionState.Crashed,
                         StartedAt = now.UtcDateTime,
-                        EndedAt = now.UtcDateTime
+                        EndedAt = now.UtcDateTime,
+                        ErrorMessage = $"Session limit reached ({activeSessionCount}/{maxSessions}). Stop an active session or upgrade your plan."
                     });
                 return;
             }

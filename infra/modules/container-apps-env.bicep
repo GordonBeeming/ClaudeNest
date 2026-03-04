@@ -69,3 +69,6 @@ output staticIp string = containerAppsEnvironment.properties.staticIp
 
 @description('The Application Insights connection string')
 output appInsightsConnectionString string = appInsights.properties.ConnectionString
+
+@description('The Application Insights resource ID')
+output appInsightsId string = appInsights.id

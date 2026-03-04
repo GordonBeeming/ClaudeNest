@@ -222,6 +222,20 @@ module cloudflared 'modules/cloudflared.bicep' = {
 }
 
 // ============================================================================
+// Module 12: Availability Tests (depends on Container Apps Env for App Insights)
+// ============================================================================
+
+module availabilityTests 'modules/availability-tests.bicep' = {
+  name: 'availability-tests'
+  params: {
+    environmentName: environmentName
+    location: location
+    appInsightsId: containerAppsEnv.outputs.appInsightsId
+    siteBaseUrl: 'https://claudenest.app'
+  }
+}
+
+// ============================================================================
 // Outputs
 // ============================================================================
 
