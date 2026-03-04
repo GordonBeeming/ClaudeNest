@@ -677,6 +677,7 @@ static async Task<int> InstallBinaryAndService(AgentCredentials credentials, str
                 Console.Error.WriteLine("Service registration failed. On Windows, install requires an elevated (Administrator) terminal.");
                 Console.Error.WriteLine("The agent has been paired — re-run install from an Administrator terminal to register the service.");
                 Console.Error.WriteLine("Or run 'claudenest-agent run' to start the agent in the foreground.");
+                return 1;
             }
             else
             {
@@ -692,6 +693,7 @@ static async Task<int> InstallBinaryAndService(AgentCredentials credentials, str
             Console.Error.WriteLine($"Service registration failed: {ex.Message}");
             Console.Error.WriteLine("On Windows, install requires an elevated (Administrator) terminal.");
             Console.Error.WriteLine("The agent has been paired — re-run install from an Administrator terminal to register the service.");
+            return 1;
         }
         else
         {

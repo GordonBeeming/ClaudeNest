@@ -332,6 +332,14 @@ export function InstallAgentModal({ open, onClose }: InstallAgentModalProps) {
 
           {token && (
             <div className="space-y-3">
+              <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 dark:bg-amber-950/30">
+                <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                <div className="text-xs text-amber-700 dark:text-amber-400">
+                  <p className="font-medium">This token expires in 10 minutes</p>
+                  <p className="mt-0.5">It can only be used once. Close and reopen this dialog to generate a new token.</p>
+                </div>
+              </div>
+
               {localBuild?.available && localBuild.source === "local-build" && (() => {
                 const localDownloads = getLocalBuildRidsForPlatform(detectedPlatform, localBuild.rids);
                 if (localDownloads.length === 0) return null;
@@ -407,14 +415,6 @@ export function InstallAgentModal({ open, onClose }: InstallAgentModalProps) {
                   isDetected={p === detectedPlatform}
                 />
               ))}
-
-              <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 dark:bg-amber-950/30">
-                <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-                <div className="text-xs text-amber-700 dark:text-amber-400">
-                  <p className="font-medium">This token expires in 10 minutes</p>
-                  <p className="mt-0.5">It can only be used once. Close and reopen this dialog to generate a new token.</p>
-                </div>
-              </div>
 
               <p className="text-center text-xs text-gray-500 dark:text-gray-400">
                 Once installed, your agent will appear in the dashboard within seconds.
