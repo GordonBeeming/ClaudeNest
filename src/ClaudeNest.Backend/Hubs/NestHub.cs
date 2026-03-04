@@ -44,11 +44,13 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
             .SendAsync("AgentStatusChanged", agentInfo.AgentId, true);
 
         var latestVersion = configuration["Agent:LatestVersion"];
+        // Don't send update info if the version is unset or the default placeholder
+        var hasRealVersion = !string.IsNullOrEmpty(latestVersion) && latestVersion != "1.0.0";
         return new AgentRegistrationResult
         {
             EffectiveMaxSessions = agent?.Account?.Plan?.MaxSessions ?? 3,
-            LatestAgentVersion = latestVersion,
-            UpdateDownloadUrl = latestVersion != null
+            LatestAgentVersion = hasRealVersion ? latestVersion : null,
+            UpdateDownloadUrl = hasRealVersion
                 ? $"https://github.com/gordonbeeming/ClaudeNest/releases/download/agent-v{latestVersion}/"
                 : null
         };

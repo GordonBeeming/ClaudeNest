@@ -103,9 +103,10 @@ public sealed class AgentUpdater
         var markerPath = Path.Combine(claudeNestDir, "update-pending");
         await File.WriteAllTextAsync(markerPath, newVersion, ct);
 
-        // Stop application - service manager will restart
+        // Exit with non-zero code so service managers restart the process
+        // (launchd with SuccessfulExit=false won't restart on exit code 0)
         _logger.LogInformation("Update staged. Restarting agent...");
-        _lifetime.StopApplication();
+        Environment.Exit(42);
     }
 
     private static string GetClaudeNestDir()

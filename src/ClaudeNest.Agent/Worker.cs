@@ -260,18 +260,19 @@ public class AgentWorker(
                 NewVersion = notification.LatestVersion
             });
 
-            await _updater.UpdateAsync(
-                notification.DownloadUrl,
-                notification.LatestVersion,
-                async () => _sessionManager.StopAllSessions(),
-                ct);
-
+            // Send restarting status before the update replaces the binary and stops the app
             await _connectionManager.SendUpdateStatusAsync(new UpdateStatusReport
             {
                 AgentId = agentId,
                 Status = "restarting",
                 NewVersion = notification.LatestVersion
             });
+
+            await _updater.UpdateAsync(
+                notification.DownloadUrl,
+                notification.LatestVersion,
+                async () => _sessionManager.StopAllSessions(),
+                ct);
         }
         catch (Exception ex)
         {
