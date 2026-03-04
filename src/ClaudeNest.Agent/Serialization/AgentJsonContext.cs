@@ -23,6 +23,8 @@ namespace ClaudeNest.Agent.Serialization;
 [JsonSerializable(typeof(DeregisterCommand))]
 [JsonSerializable(typeof(UpdateAvailableNotification))]
 [JsonSerializable(typeof(UpdateStatusReport))]
+[JsonSerializable(typeof(ActiveSessionInfo))]
+[JsonSerializable(typeof(List<ActiveSessionInfo>))]
 // Primitives used by SignalR method arguments
 [JsonSerializable(typeof(Guid))]
 [JsonSerializable(typeof(string))]

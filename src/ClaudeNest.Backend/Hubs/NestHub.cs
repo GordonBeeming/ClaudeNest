@@ -43,6 +43,18 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
         await Clients.Group($"user:{agentInfo.AgentId}")
             .SendAsync("AgentStatusChanged", agentInfo.AgentId, true);
 
+        // Fetch active sessions the server thinks this agent has
+        var activeSessions = await db.Sessions
+            .Where(s => s.AgentId == agentInfo.AgentId &&
+                (s.State == "Running" || s.State == "Starting" || s.State == "Requested"))
+            .Select(s => new ActiveSessionInfo
+            {
+                SessionId = s.Id,
+                Path = s.Path,
+                Pid = s.Pid
+            })
+            .ToListAsync();
+
         var latestVersion = configuration["Agent:LatestVersion"];
         // Don't send update info if the version is unset or the default placeholder
         var hasRealVersion = !string.IsNullOrEmpty(latestVersion) && latestVersion != "1.0.0";
@@ -52,7 +64,8 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
             LatestAgentVersion = hasRealVersion ? latestVersion : null,
             UpdateDownloadUrl = hasRealVersion
                 ? $"https://github.com/gordonbeeming/ClaudeNest/releases/download/agent-v{latestVersion}/"
-                : null
+                : null,
+            ActiveSessions = activeSessions
         };
     }
 

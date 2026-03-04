@@ -86,6 +86,74 @@ public sealed class SessionManager(
         return true;
     }
 
+    public List<SessionStatusUpdate> ReconcileSessions(List<ActiveSessionInfo> serverSessions)
+    {
+        var updates = new List<SessionStatusUpdate>();
+
+        foreach (var serverSession in serverSessions)
+        {
+            // Skip if we're already tracking this session
+            if (_sessions.ContainsKey(serverSession.SessionId))
+                continue;
+
+            var isAlive = false;
+            Process? process = null;
+            if (serverSession.Pid is not null)
+            {
+                try
+                {
+                    process = Process.GetProcessById(serverSession.Pid.Value);
+                    isAlive = !process.HasExited;
+                }
+                catch
+                {
+                    // Process doesn't exist
+                }
+            }
+
+            if (isAlive && process is not null)
+            {
+                // Process is still running — adopt it
+                var session = new ManagedSession
+                {
+                    SessionId = serverSession.SessionId,
+                    Path = serverSession.Path,
+                    State = SessionState.Running,
+                    Pid = serverSession.Pid
+                };
+                session.Process = process;
+                _sessions.TryAdd(serverSession.SessionId, session);
+
+                logger.LogInformation(
+                    "Adopted running session {SessionId} (PID {Pid})",
+                    serverSession.SessionId, serverSession.Pid);
+
+                // Monitor the process for exit
+                _ = MonitorAdoptedProcessAsync(session);
+            }
+            else
+            {
+                // Process is gone — report as crashed
+                logger.LogInformation(
+                    "Session {SessionId} (PID {Pid}) is no longer running, reporting as crashed",
+                    serverSession.SessionId, serverSession.Pid);
+            }
+
+            updates.Add(new SessionStatusUpdate
+            {
+                SessionId = serverSession.SessionId,
+                AgentId = agentId,
+                Path = serverSession.Path,
+                State = isAlive ? SessionState.Running : SessionState.Crashed,
+                Pid = serverSession.Pid,
+                EndedAt = isAlive ? null : DateTime.UtcNow,
+                ErrorMessage = isAlive ? null : "Process no longer running after agent restart"
+            });
+        }
+
+        return updates;
+    }
+
     public List<SessionStatusUpdate> GetAllSessions()
     {
         return _sessions.Values.Select(ToStatusUpdate).ToList();
@@ -268,6 +336,32 @@ public sealed class SessionManager(
             session.ErrorMessage = ex.Message.Contains("No such file or directory")
                 ? $"{ex.Message} Set ClaudeBinary in ~/.claudenest/config.json to the full path (e.g. /Users/you/.local/bin/claude)."
                 : ex.Message;
+            NotifyStatusChanged(session);
+        }
+    }
+
+    private async Task MonitorAdoptedProcessAsync(ManagedSession session)
+    {
+        try
+        {
+            if (session.Process is null) return;
+            await session.Process.WaitForExitAsync();
+
+            if (session.State is SessionState.Stopped or SessionState.Crashed)
+                return;
+
+            session.State = session.Process.ExitCode == 0
+                ? SessionState.Stopped
+                : SessionState.Crashed;
+            session.EndedAt = DateTime.UtcNow;
+            session.ExitCode = session.Process.ExitCode;
+            NotifyStatusChanged(session);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Error monitoring adopted session {SessionId}", session.SessionId);
+            session.State = SessionState.Crashed;
+            session.EndedAt = DateTime.UtcNow;
             NotifyStatusChanged(session);
         }
     }

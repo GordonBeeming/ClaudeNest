@@ -217,6 +217,24 @@ public class AgentWorker(
             }
         }
 
+        // Reconcile sessions the server thinks are active with local process state
+        if (registrationResult?.ActiveSessions is { Count: > 0 })
+        {
+            logger.LogInformation("Reconciling {Count} active sessions from server", registrationResult.ActiveSessions.Count);
+            var reconciled = _sessionManager.ReconcileSessions(registrationResult.ActiveSessions);
+            foreach (var update in reconciled)
+            {
+                try
+                {
+                    await _connectionManager.SendSessionStatusAsync(update);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to send reconciled session status for {SessionId}", update.SessionId);
+                }
+            }
+        }
+
         // Report current sessions on connect
         var currentSessions = _sessionManager.GetAllSessions();
         if (currentSessions.Count > 0)
