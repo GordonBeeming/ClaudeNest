@@ -47,6 +47,16 @@ if (args[0] == "diag")
     return await HandleDiagAsync();
 }
 
+if (args[0] == "restart")
+{
+    return await HandleRestartAsync();
+}
+
+if (args[0] == "update")
+{
+    return await HandleUpdateAsync();
+}
+
 if (args[0] == "uninstall")
 {
     return await HandleUninstallAsync();
@@ -238,6 +248,8 @@ static void PrintHelp()
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  install       Pair with backend and register as a background service");
+    Console.WriteLine("  restart       Restart the background service");
+    Console.WriteLine("  update        Update the installed binary and restart the service");
     Console.WriteLine("  uninstall     Stop and remove the background service");
     Console.WriteLine("  add-path      Add directories to the agent");
     Console.WriteLine("  remove-path   Remove directories from the agent");
@@ -907,6 +919,102 @@ static void EnsureBinOnPath(string binDir)
             Console.WriteLine($"  echo '{exportLine}' >> {profilePath}");
         }
     }
+}
+
+static async Task<int> HandleRestartAsync()
+{
+    var credentials = ConfigLoader.LoadCredentials();
+    if (credentials is null)
+    {
+        Console.Error.WriteLine("No agent installed. Run 'claudenest-agent install' first.");
+        return 1;
+    }
+
+    using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+    var serviceLogger = loggerFactory.CreateLogger("ServiceInstaller");
+    var installer = ServiceInstallerFactory.Create(serviceLogger);
+
+    if (!installer.IsInstalled())
+    {
+        Console.Error.WriteLine("No background service found. Run 'claudenest-agent install' to set up the service.");
+        return 1;
+    }
+
+    Console.WriteLine("Restarting ClaudeNest Agent service...");
+    var result = await installer.RestartAsync();
+    if (result)
+    {
+        Console.WriteLine("Agent restarted successfully.");
+        return 0;
+    }
+
+    Console.Error.WriteLine("Failed to restart the agent service.");
+    return 1;
+}
+
+static async Task<int> HandleUpdateAsync()
+{
+    var credentials = ConfigLoader.LoadCredentials();
+    var config = ConfigLoader.LoadConfig();
+
+    if (credentials is null || config.AllowedPaths.Count == 0)
+    {
+        Console.Error.WriteLine("No agent installed. Run 'claudenest-agent install' first.");
+        return 1;
+    }
+
+    var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+    var binaryName = isWindows ? "claudenest-agent.exe" : "claudenest-agent";
+    var binaryPath = config.InstalledBinaryPath
+        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest", "bin", binaryName);
+
+    var currentBinaryPath = Environment.ProcessPath;
+    if (currentBinaryPath is null)
+    {
+        Console.Error.WriteLine("Cannot determine current binary path.");
+        return 1;
+    }
+
+    // Copy current binary to installed location
+    if (currentBinaryPath != binaryPath)
+    {
+        Console.WriteLine($"Updating agent binary at {binaryPath}...");
+        var binDir = Path.GetDirectoryName(binaryPath)!;
+        Directory.CreateDirectory(binDir);
+        File.Copy(currentBinaryPath, binaryPath, overwrite: true);
+        if (!isWindows)
+        {
+            File.SetUnixFileMode(binaryPath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        }
+        Console.WriteLine("Binary updated.");
+    }
+    else
+    {
+        Console.WriteLine("Already running from the installed location. No binary update needed.");
+    }
+
+    // Restart the service
+    using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+    var serviceLogger = loggerFactory.CreateLogger("ServiceInstaller");
+    var installer = ServiceInstallerFactory.Create(serviceLogger);
+
+    if (installer.IsInstalled())
+    {
+        Console.WriteLine("Restarting agent service...");
+        await installer.UninstallAsync();
+        await installer.InstallAsync(binaryPath);
+        Console.WriteLine("Agent updated and restarted successfully.");
+    }
+    else
+    {
+        Console.WriteLine("No background service found. Binary updated but service not restarted.");
+        Console.WriteLine("Run 'claudenest-agent install' to set up the service.");
+    }
+
+    return 0;
 }
 
 static async Task<int> HandleUninstallAsync()
