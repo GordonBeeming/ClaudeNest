@@ -136,7 +136,6 @@ function FolderNode({
   const [loading, setLoading] = useState(!!autoExpand);
   const [children, setChildren] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [hovering, setHovering] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const autoExpandTriggered = useRef(false);
 
@@ -187,11 +186,7 @@ function FolderNode({
         )}
         style={{ paddingLeft: `${depth * 20 + 8}px` }}
         onClick={handleToggle}
-        onMouseEnter={() => setHovering(true)}
-        onMouseLeave={() => {
-          setHovering(false);
-          setShowColorPicker(false);
-        }}
+        onMouseLeave={() => setShowColorPicker(false)}
       >
         <span className="shrink-0 text-gray-400">
           {loading ? (
@@ -218,8 +213,7 @@ function FolderNode({
         <span className="min-w-0 truncate text-sm">{name}</span>
 
         {/* Hover action buttons */}
-        {hovering && (
-          <div className="ml-auto flex shrink-0 items-center gap-1">
+          <div className="ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             {onToggleFavorite && (
               <button
                 onClick={(e) => {
@@ -286,7 +280,6 @@ function FolderNode({
               </span>
             )}
           </div>
-        )}
       </div>
 
       {expanded && error && (
