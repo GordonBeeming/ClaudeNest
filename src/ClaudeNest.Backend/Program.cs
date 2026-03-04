@@ -114,6 +114,12 @@ if (app.Environment.IsDevelopment())
     await db.Agents.Where(a => a.IsOnline).ExecuteUpdateAsync(s => s
         .SetProperty(a => a.IsOnline, false)
         .SetProperty(a => a.ConnectionId, (string?)null));
+    // Clean up stale sessions left in active states from previous run
+    await db.Sessions
+        .Where(s => s.State == "Running" || s.State == "Starting" || s.State == "Requested")
+        .ExecuteUpdateAsync(s => s
+            .SetProperty(s => s.State, "Crashed")
+            .SetProperty(s => s.EndedAt, DateTime.UtcNow));
 }
 else
 {
@@ -125,6 +131,12 @@ else
     await db.Agents.Where(a => a.IsOnline).ExecuteUpdateAsync(s => s
         .SetProperty(a => a.IsOnline, false)
         .SetProperty(a => a.ConnectionId, (string?)null));
+    // Clean up stale sessions left in active states from previous run
+    await db.Sessions
+        .Where(s => s.State == "Running" || s.State == "Starting" || s.State == "Requested")
+        .ExecuteUpdateAsync(s => s
+            .SetProperty(s => s.State, "Crashed")
+            .SetProperty(s => s.EndedAt, DateTime.UtcNow));
 }
 
 // Sync plans to Stripe if configured (creates products + prices)

@@ -291,11 +291,42 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
             agent.IsOnline = false;
             agent.ConnectionId = null;
             agent.LastSeenAt = timeProvider.GetUtcNow();
+
+            // Mark any active sessions as crashed since the agent disconnected
+            var staleSessions = await db.Sessions
+                .AsTracking()
+                .Where(s => s.AgentId == agent.Id &&
+                    (s.State == "Running" || s.State == "Starting" || s.State == "Requested"))
+                .ToListAsync();
+
+            var now = timeProvider.GetUtcNow().UtcDateTime;
+            foreach (var session in staleSessions)
+            {
+                session.State = "Crashed";
+                session.EndedAt = now;
+            }
+
             await db.SaveChangesAsync();
 
             // Notify web clients
             await Clients.Group($"user:{agent.Id}")
                 .SendAsync("AgentStatusChanged", agent.Id, false);
+
+            // Notify about crashed sessions
+            foreach (var session in staleSessions)
+            {
+                await Clients.Group($"user:{agent.Id}")
+                    .SendAsync("SessionStatusChanged", new SessionStatusUpdate
+                    {
+                        SessionId = session.Id,
+                        AgentId = agent.Id,
+                        Path = session.Path,
+                        State = Shared.Enums.SessionState.Crashed,
+                        StartedAt = session.StartedAt.UtcDateTime,
+                        EndedAt = session.EndedAt?.UtcDateTime,
+                        ErrorMessage = "Agent disconnected"
+                    });
+            }
         }
 
         await base.OnDisconnectedAsync(exception);
