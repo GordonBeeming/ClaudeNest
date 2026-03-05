@@ -67,6 +67,46 @@ ClaudeNest is a three-component system that lets you browse dev folders remotely
 4. Commands (start session, list directories) are relayed via SignalR
 5. The agent spawns `claude remote-control` processes locally -- ClaudeNest never streams terminal I/O
 
+## Cloudflare Tunnel
+
+All inbound traffic to ClaudeNest flows through a **Cloudflare Tunnel** -- there are no public IPs or Azure ingress controllers. The `cloudflared` container (running as an Azure Container App) establishes an outbound-only connection to Cloudflare, and route rules in the Cloudflare dashboard direct traffic to the appropriate internal services.
+
+### Tunnel Configuration
+
+- **Tunnel name**: `ca-claudenest-tunnel-{env}` (e.g. `ca-claudenest-tunnel-prod`)
+- **Tunnel token**: Stored in Azure Key Vault as `cloudflare-tunnel-token`, injected into the `cloudflared` container at runtime
+- **Container**: `cloudflare/cloudflared:latest`, runs `cloudflared tunnel --no-autoupdate run`
+- **Resources**: 0.25 CPU, 0.5 GB memory, fixed 1 replica (not scaled)
+- **Bicep module**: `infra/modules/cloudflared.bicep`
+
+### Route Rules
+
+Routes are configured in the Cloudflare dashboard under **Tunnels > Routes**. All routes are "Published application" type and point to internal Azure Container App FQDNs (not publicly accessible).
+
+| Destination | Target Container App | Purpose |
+|---|---|---|
+| `claudenest.app/api/*` | Backend (`ca-claudenest-api-{env}`) | REST API endpoints |
+| `claudenest.app/hubs/*` | Backend (`ca-claudenest-api-{env}`) | SignalR hub (WebSocket connections) |
+| `claudenest.app/install.sh` | Backend (`ca-claudenest-api-{env}`) | Linux/macOS agent install script |
+| `claudenest.app/install.ps1` | Backend (`ca-claudenest-api-{env}`) | Windows agent install script |
+| `claudenest.app` | Frontend (`ca-claudenest-web-{env}`) | React SPA (catch-all) |
+
+The internal service URLs follow the pattern:
+```
+https://ca-claudenest-{app}-{env}.internal.{environment-unique-id}.{region}.azurecontainerapps.io
+```
+
+### DNS
+
+The `claudenest.app` domain is managed in Cloudflare DNS. Cloudflare automatically creates CNAME records that point to the tunnel when routes are configured.
+
+### Why Cloudflare Tunnel?
+
+- **No public IPs** -- All Azure resources remain fully internal to the VNet
+- **DDoS protection** -- Cloudflare's network sits in front of all traffic
+- **Simple routing** -- Path-based routing to multiple backend services without needing Azure Application Gateway or Front Door
+- **Outbound-only** -- The `cloudflared` container initiates the connection to Cloudflare, so no inbound firewall rules are needed
+
 ## Azure Infrastructure
 
 All infrastructure is defined in Bicep (`infra/`) and deployed via GitHub Actions.

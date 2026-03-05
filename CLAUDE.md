@@ -353,6 +353,7 @@ Program.cs       # Entry point and DI setup
 
 ## Development Guidelines
 
+- **Living documentation** — When adding new features, infrastructure, conventions, or changing existing patterns, update the relevant documentation (`docs/`, `CLAUDE.md`, `README.md`) as part of the same change. Documentation should stay in sync with the codebase, not be an afterthought.
 - Backend and Agent both reference `ClaudeNest.Shared` for DTOs — keep message types here
 - Agent uses `PublishAot=true` — add all serialized types to `AgentJsonContext.cs`
 - Agent config and credentials both use JSON (AOT-compatible via source generators)
