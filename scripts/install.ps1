@@ -69,8 +69,54 @@ Write-Host ""
 Write-Host "The agent will be installed as a Windows Service." -ForegroundColor Yellow
 Write-Host "Your Windows account password is required for service registration." -ForegroundColor Yellow
 Write-Host ""
-$Credential = Get-Credential -UserName "$env:USERDOMAIN\$env:USERNAME" -Message "Enter your Windows password for service registration"
-$Password = $Credential.GetNetworkCredential().Password
+
+# Validate credentials before proceeding
+$MaxAttempts = 3
+$Attempt = 0
+$Password = $null
+$AccountName = "$env:USERDOMAIN\$env:USERNAME"
+
+while ($Attempt -lt $MaxAttempts) {
+    $Attempt++
+    $Credential = Get-Credential -UserName $AccountName -Message "Enter your Windows password for service registration (attempt $Attempt of $MaxAttempts)"
+    if (-not $Credential) {
+        Write-Error "Credential prompt was cancelled."
+        exit 1
+    }
+    $Password = $Credential.GetNetworkCredential().Password
+
+    # Validate the credentials using a local logon test
+    Add-Type -AssemblyName System.DirectoryServices.AccountManagement
+    $ContextType = [System.DirectoryServices.AccountManagement.ContextType]::Machine
+    try {
+        $PrincipalContext = New-Object System.DirectoryServices.AccountManagement.PrincipalContext($ContextType)
+        $Valid = $PrincipalContext.ValidateCredentials($env:USERNAME, $Password)
+        $PrincipalContext.Dispose()
+    } catch {
+        # If machine context fails, try domain context
+        try {
+            $ContextType = [System.DirectoryServices.AccountManagement.ContextType]::Domain
+            $PrincipalContext = New-Object System.DirectoryServices.AccountManagement.PrincipalContext($ContextType)
+            $Valid = $PrincipalContext.ValidateCredentials($env:USERNAME, $Password)
+            $PrincipalContext.Dispose()
+        } catch {
+            $Valid = $false
+        }
+    }
+
+    if ($Valid) {
+        Write-Host "Credentials verified successfully." -ForegroundColor Green
+        break
+    } else {
+        Write-Host "Invalid password. Please try again." -ForegroundColor Red
+        $Password = $null
+    }
+}
+
+if (-not $Password) {
+    Write-Error "Failed to validate credentials after $MaxAttempts attempts."
+    exit 1
+}
 
 # Run the install command
 Write-Host ""
