@@ -78,6 +78,9 @@ if (!string.IsNullOrEmpty(stripeKey))
 // HTTP client for Auth0 /userinfo calls
 builder.Services.AddHttpClient();
 
+// In-memory cache (used for GitHub API responses, etc.)
+builder.Services.AddMemoryCache();
+
 // Data Protection — persist keys to database
 builder.Services.AddDataProtection()
     .PersistKeysToDbContext<NestDbContext>();

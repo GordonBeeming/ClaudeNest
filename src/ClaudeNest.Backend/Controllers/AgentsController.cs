@@ -10,13 +10,14 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace ClaudeNest.Backend.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext, TimeProvider timeProvider, IConfiguration configuration, IHttpClientFactory httpClientFactory) : ControllerBase
+public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext, TimeProvider timeProvider, IConfiguration configuration, IHttpClientFactory httpClientFactory, IMemoryCache memoryCache) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAgents()
@@ -127,33 +128,39 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext,
         var repoOwner = configuration["Agent:GitHubRepoOwner"] ?? "gordonbeeming";
         var repoName = configuration["Agent:GitHubRepoName"] ?? "ClaudeNest";
 
-        // Fetch latest release from GitHub API
+        // Fetch latest release from GitHub API (cached for 5 minutes)
         var version = configuration["Agent:LatestVersion"];
         string? downloadUrl = null;
 
         if (string.IsNullOrEmpty(version) || version == "1.0.0")
         {
-            try
+            const string cacheKey = "github:latest-agent-release";
+            var agentRelease = await memoryCache.GetOrCreateAsync(cacheKey, async entry =>
             {
-                var http = httpClientFactory.CreateClient();
-                http.DefaultRequestHeaders.Add("User-Agent", "ClaudeNest-Backend");
-                http.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");
-
-                var response = await http.GetAsync($"https://api.github.com/repos/{repoOwner}/{repoName}/releases?per_page=10");
-                response.EnsureSuccessStatusCode();
-
-                var releases = await response.Content.ReadFromJsonAsync<List<GitHubRelease>>();
-                var agentRelease = releases?.FirstOrDefault(r => r.TagName?.StartsWith("agent-v") == true);
-
-                if (agentRelease is not null)
+                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
+                try
                 {
-                    version = agentRelease.TagName!["agent-v".Length..];
-                    downloadUrl = $"https://github.com/{repoOwner}/{repoName}/releases/download/{agentRelease.TagName}/";
+                    var http = httpClientFactory.CreateClient();
+                    http.DefaultRequestHeaders.Add("User-Agent", "ClaudeNest-Backend");
+                    http.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");
+
+                    var response = await http.GetAsync($"https://api.github.com/repos/{repoOwner}/{repoName}/releases?per_page=10");
+                    response.EnsureSuccessStatusCode();
+
+                    var releases = await response.Content.ReadFromJsonAsync<List<GitHubRelease>>();
+                    return releases?.FirstOrDefault(r => r.TagName?.StartsWith("agent-v") == true);
                 }
-            }
-            catch
+                catch
+                {
+                    entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30);
+                    return null;
+                }
+            });
+
+            if (agentRelease is not null)
             {
-                // Fall back to config
+                version = agentRelease.TagName!["agent-v".Length..];
+                downloadUrl = $"https://github.com/{repoOwner}/{repoName}/releases/download/{agentRelease.TagName}/";
             }
         }
 
