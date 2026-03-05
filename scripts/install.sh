@@ -1,11 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
-# These placeholders are replaced by the backend when serving the script
-TOKEN="%%TOKEN%%"
+# Backend URL and version are substituted by the server when this script is downloaded.
+# The pairing token must be provided via the CLAUDENEST_TOKEN environment variable.
 BACKEND_URL="%%BACKEND_URL%%"
 VERSION="%%LATEST_VERSION%%"
 
+if [ -z "${CLAUDENEST_TOKEN:-}" ]; then
+  echo "Error: CLAUDENEST_TOKEN environment variable is required."
+  echo "Usage: curl -sSL '${BACKEND_URL}/install.sh' | CLAUDENEST_TOKEN='<token>' bash"
+  exit 1
+fi
+
+TOKEN="$CLAUDENEST_TOKEN"
 REPO="GordonBeeming/ClaudeNest"
 INSTALL_DIR="$HOME/.claudenest/bin"
 

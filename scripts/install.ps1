@@ -1,10 +1,16 @@
 # ClaudeNest Agent Installer for Windows
-# These placeholders are replaced by the backend when serving the script
-$Token = "%%TOKEN%%"
+# Backend URL and version are substituted by the server when this script is downloaded.
+# The pairing token must be provided via the CLAUDENEST_TOKEN environment variable.
 $BackendUrl = "%%BACKEND_URL%%"
 $Version = "%%LATEST_VERSION%%"
 
 $ErrorActionPreference = "Stop"
+
+$Token = $env:CLAUDENEST_TOKEN
+if (-not $Token) {
+    Write-Error "CLAUDENEST_TOKEN environment variable is required.`nUsage: `$env:CLAUDENEST_TOKEN='<token>'; irm '$BackendUrl/install.ps1' | iex"
+    exit 1
+}
 
 $Repo = "GordonBeeming/ClaudeNest"
 $InstallDir = Join-Path $env:USERPROFILE ".claudenest\bin"

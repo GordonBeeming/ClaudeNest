@@ -22,7 +22,7 @@ const PLATFORMS: Record<Platform, PlatformConfig> = {
     label: "Windows",
     icon: "🪟",
     installCommand: (backendUrl, token) =>
-      `irm '${backendUrl}/install.ps1?token=${token}' | iex`,
+      `$env:CLAUDENEST_TOKEN='${token}'; irm '${backendUrl}/install.ps1' | iex`,
     installNotes: [
       "Run this command in an elevated (Administrator) PowerShell",
       "You will be prompted for your Windows password to register the agent as a Windows Service",
@@ -32,7 +32,7 @@ const PLATFORMS: Record<Platform, PlatformConfig> = {
     label: "macOS",
     icon: "🍎",
     installCommand: (backendUrl, token) =>
-      `curl -sSL '${backendUrl}/install.sh?token=${token}' | bash`,
+      `curl -sSL '${backendUrl}/install.sh' | CLAUDENEST_TOKEN='${token}' bash`,
     installNotes: [
       "The agent will be installed as a macOS LaunchAgent for auto-start",
       "The binary will be placed in ~/.claudenest/bin/",
@@ -42,7 +42,7 @@ const PLATFORMS: Record<Platform, PlatformConfig> = {
     label: "Linux",
     icon: "🐧",
     installCommand: (backendUrl, token) =>
-      `curl -sSL '${backendUrl}/install.sh?token=${token}' | bash`,
+      `curl -sSL '${backendUrl}/install.sh' | CLAUDENEST_TOKEN='${token}' bash`,
     installNotes: [
       "The agent will be installed as a systemd user service for auto-start",
       "The binary will be placed in ~/.claudenest/bin/",

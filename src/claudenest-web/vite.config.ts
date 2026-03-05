@@ -61,6 +61,14 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      "/install.sh": {
+        target: backendUrl,
+        changeOrigin: true,
+      },
+      "/install.ps1": {
+        target: backendUrl,
+        changeOrigin: true,
+      },
     },
   },
 });
