@@ -14,7 +14,7 @@
 *.md
 !src/claudenest-web/*.md
 branding/
-scripts/
+scripts/*.md
 docs/
 *.sln
 .editorconfig

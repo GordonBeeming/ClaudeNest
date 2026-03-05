@@ -21,6 +21,9 @@ COPY src/ClaudeNest.Backend/ ClaudeNest.Backend/
 COPY src/ClaudeNest.Shared/ ClaudeNest.Shared/
 COPY src/ClaudeNest.ServiceDefaults/ ClaudeNest.ServiceDefaults/
 
+# Copy install scripts (referenced as Content includes in the csproj)
+COPY scripts/ /scripts/
+
 RUN dotnet publish ClaudeNest.Backend/ClaudeNest.Backend.csproj \
     -c Release \
     -o /app/publish \
