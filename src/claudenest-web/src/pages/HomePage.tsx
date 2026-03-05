@@ -240,6 +240,18 @@ function PricingSection() {
         <p className="mx-auto mt-3 max-w-xl text-center text-gray-500 dark:text-gray-400">
           All plans include full access to ClaudeNest. Pick the one that fits your workflow.
         </p>
+        <div className="mx-auto mt-4 max-w-xl rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+          <strong>Prerequisite:</strong> ClaudeNest uses Anthropic's{" "}
+          <a
+            href="https://claude.ai/settings/billing"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-amber-900 dark:hover:text-amber-200"
+          >
+            remote-control
+          </a>{" "}
+          feature, which requires a <strong>Claude Max subscription</strong> ($100–$200/month, separate from ClaudeNest).
+        </div>
         <div className="mt-10">
           <PricingCards
             plans={plans}

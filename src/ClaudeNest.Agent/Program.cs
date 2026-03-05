@@ -372,6 +372,10 @@ static async Task<int> HandleInstallAsync(string[] args)
     var trustResult = await ValidateAndTrustPaths(paths, backendUrl, agentName);
     if (trustResult != 0) return trustResult;
 
+    // Check remote-control is enabled
+    var remoteResult = await EnsureRemoteControlEnabled();
+    if (remoteResult != 0) return remoteResult;
+
     Console.WriteLine();
     Console.WriteLine($"Pairing with backend at {backendUrl}...");
 
@@ -1297,5 +1301,117 @@ static Task<bool> IsWorkspaceUntrustedAsync(string directoryPath)
     {
         // If we can't read the config, don't block the install
         return Task.FromResult(false);
+    }
+}
+
+static async Task<int> EnsureRemoteControlEnabled()
+{
+    Console.WriteLine();
+    Console.WriteLine("🔍 Checking Claude remote-control...");
+
+    if (!IsRemoteControlEnabled())
+    {
+        Console.WriteLine("   ❌ Remote-control has not been enabled yet.");
+        Console.WriteLine();
+        Console.WriteLine("⚠️  Claude remote-control needs to be enabled before ClaudeNest can launch sessions.");
+        Console.WriteLine("   We'll open Claude remote-control so you can accept the prompt.");
+        Console.WriteLine();
+        Console.WriteLine("   ℹ️  Note: Remote-control requires a Claude Max subscription ($100-$200/month).");
+        Console.WriteLine("   If you don't have a Max plan, remote-control will not work.");
+        Console.WriteLine();
+        Console.Write("👉 Press Enter to continue...");
+        Console.ReadLine();
+
+        Console.WriteLine();
+        Console.WriteLine("🔧 Starting Claude remote-control setup...");
+        Console.WriteLine("   Accept the remote-control prompt, then press Ctrl+C to close Claude.");
+        Console.WriteLine();
+
+        await RunClaudeRemoteControlSetupAsync();
+
+        // Re-check
+        Console.WriteLine();
+        Console.Write("   Verifying remote-control... ");
+        if (!IsRemoteControlEnabled())
+        {
+            Console.WriteLine("❌ still not enabled");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("❌ Remote-control is not enabled. ClaudeNest requires this to function.");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("To enable it manually, run:");
+            Console.Error.WriteLine("   claude remote-control");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("Make sure you have a Claude Max subscription (https://claude.ai/settings/billing).");
+            Console.Error.WriteLine("Then re-run the install command.");
+            return 1;
+        }
+
+        Console.WriteLine("✅ enabled");
+    }
+    else
+    {
+        Console.WriteLine("   ✅ Remote-control is enabled.");
+    }
+
+    return 0;
+}
+
+static bool IsRemoteControlEnabled()
+{
+    try
+    {
+        var configPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".claude.json");
+
+        if (!File.Exists(configPath))
+            return false;
+
+        var json = File.ReadAllText(configPath);
+        using var doc = JsonDocument.Parse(json);
+
+        return doc.RootElement.TryGetProperty("remoteDialogSeen", out var seen) && seen.GetBoolean();
+    }
+    catch
+    {
+        // If we can't read the config, assume not enabled
+        return false;
+    }
+}
+
+static async Task RunClaudeRemoteControlSetupAsync()
+{
+    try
+    {
+        var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = "claude",
+                Arguments = "remote-control",
+                UseShellExecute = false,
+                RedirectStandardInput = false,
+                RedirectStandardOutput = false,
+                RedirectStandardError = false,
+                CreateNoWindow = false
+            }
+        };
+
+        process.Start();
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        try
+        {
+            await process.WaitForExitAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.Error.WriteLine("   ⚠️  Timed out waiting for Claude to finish.");
+            try { process.Kill(entireProcessTree: true); } catch { }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"   ⚠️  Could not run claude remote-control: {ex.Message}");
     }
 }
