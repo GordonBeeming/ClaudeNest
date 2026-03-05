@@ -1316,7 +1316,7 @@ static async Task<int> EnsureRemoteControlEnabled()
         Console.WriteLine("⚠️  Claude remote-control needs to be enabled before ClaudeNest can launch sessions.");
         Console.WriteLine("   We'll open Claude remote-control so you can accept the prompt.");
         Console.WriteLine();
-        Console.WriteLine("   ℹ️  Note: Remote-control requires a Claude Max subscription ($100-$200/month).");
+        Console.WriteLine("   ℹ️  Note: Remote-control requires a Claude Max subscription.");
         Console.WriteLine("   If you don't have a Max plan, remote-control will not work.");
         Console.WriteLine();
         Console.Write("👉 Press Enter to continue...");
@@ -1341,7 +1341,7 @@ static async Task<int> EnsureRemoteControlEnabled()
             Console.Error.WriteLine("To enable it manually, run:");
             Console.Error.WriteLine("   claude remote-control");
             Console.Error.WriteLine();
-            Console.Error.WriteLine("Make sure you have a Claude Max subscription (https://claude.ai/settings/billing).");
+            Console.Error.WriteLine("Make sure you have a Claude Max subscription — see https://claude.ai/settings/billing");
             Console.Error.WriteLine("Then re-run the install command.");
             return 1;
         }
