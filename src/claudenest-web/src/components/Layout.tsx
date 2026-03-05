@@ -8,6 +8,7 @@ import { useUserContext } from "../contexts/UserContext";
 import { isAuth0Configured } from "../config";
 import { PastDueBanner } from "./PastDueBanner";
 import { Footer } from "./Footer";
+import { GitHubStarButton } from "./GitHubStarButton";
 
 /** Sign out button — only rendered when Auth0 is active (inside Auth0Provider). */
 function Auth0SignOutButton({ onClose }: { onClose: () => void }) {
@@ -163,6 +164,7 @@ export function Layout() {
             </Link>
 
             <div className="flex items-center gap-3">
+              <GitHubStarButton />
               {signalR.connected ? (
                 <span className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
                   <Wifi className="h-3.5 w-3.5" />

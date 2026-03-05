@@ -1,54 +1,8 @@
-import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
-import { Bird, Star, Github } from "lucide-react";
+import { Bird } from "lucide-react";
 import { isAuth0Configured } from "../config";
-
-const GITHUB_REPO = "GordonBeeming/ClaudeNest";
-const GITHUB_URL = `https://github.com/${GITHUB_REPO}`;
-const CACHE_KEY = "claudenest_gh_stars";
-
-function GitHubStarButton() {
-  const [stars, setStars] = useState<number | null>(null);
-
-  useEffect(() => {
-    const cached = sessionStorage.getItem(CACHE_KEY);
-    if (cached) {
-      setStars(parseInt(cached, 10));
-      return;
-    }
-
-    fetch(`https://api.github.com/repos/${GITHUB_REPO}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (typeof data.stargazers_count === "number") {
-          setStars(data.stargazers_count);
-          sessionStorage.setItem(CACHE_KEY, String(data.stargazers_count));
-        }
-      })
-      .catch(() => {
-        // Silently fail — button still links to GitHub
-      });
-  }, []);
-
-  return (
-    <a
-      href={GITHUB_URL}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-      aria-label={`Star ClaudeNest on GitHub${stars !== null ? ` — ${stars} stars` : ""}`}
-    >
-      <Github className="h-4 w-4" aria-hidden="true" />
-      <Star className="h-3.5 w-3.5" aria-hidden="true" />
-      {stars !== null ? (
-        <span>{stars}</span>
-      ) : (
-        <span className="inline-block h-4 w-6 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
-      )}
-    </a>
-  );
-}
+import { GitHubStarButton } from "./GitHubStarButton";
 
 function AuthButtons() {
   const { loginWithRedirect, isAuthenticated } = useAuth0();
