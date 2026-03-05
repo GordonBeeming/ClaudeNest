@@ -13,7 +13,6 @@ on:
 permissions:
   contents: write
   id-token: write
-  variables: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
@@ -134,14 +133,6 @@ jobs:
       group: deploy-infra
       cancel-in-progress: false
     steps:
-      - name: Update AGENT_LATEST_VERSION repo variable
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh variable set AGENT_LATEST_VERSION \
-            --repo ${{ github.repository }} \
-            --body "${{ needs.determine-version.outputs.version }}"
-
       - name: Azure Login
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
         with:
