@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Tag, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { clsx } from "clsx";
+import { format } from "date-fns";
 import { getAdminCoupons, createAdminCoupon, deleteAdminCoupon, getPlans } from "../../api";
 import type { CouponInfo, PlanInfo, DiscountType } from "../../types";
 import { formatDiscountDescription } from "../../types";
@@ -344,7 +345,7 @@ export function CouponManagement() {
                     </td>
                     <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
                       {coupon.expiresAt
-                        ? new Date(coupon.expiresAt).toLocaleDateString()
+                        ? format(new Date(coupon.expiresAt), "dd MMM yyyy")
                         : "Never"}
                     </td>
                     <td className="px-4 py-3">

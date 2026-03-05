@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Building, Plus, RefreshCw, Trash2, Pencil } from "lucide-react";
 import { clsx } from "clsx";
+import { format } from "date-fns";
 import { getAdminCompanyDeals, createAdminCompanyDeal, updateAdminCompanyDeal, deactivateAdminCompanyDeal, getPlans } from "../../api";
 import type { CompanyDeal, PlanInfo } from "../../types";
 import { PlanPicker } from "../../components/PlanPicker";
@@ -188,9 +189,10 @@ export function CompanyDeals() {
                 <tr className="border-b border-gray-100 dark:border-gray-800">
                   <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Domain</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Plan</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Users</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Status</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Created</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Deactivated</th>
+                  <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Created</th>
+                  <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Deactivated</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-500 dark:text-gray-400">Actions</th>
                 </tr>
               </thead>
@@ -205,6 +207,14 @@ export function CompanyDeals() {
                         deal.planName
                       )}
                     </td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                      <div>{deal.userCount}</div>
+                      {deal.overriddenCount > 0 && (
+                        <div className="text-xs text-amber-600 dark:text-amber-400">
+                          {deal.overriddenCount} overridden
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <span
                         className={clsx(
@@ -217,12 +227,12 @@ export function CompanyDeals() {
                         {deal.isActive ? "Active" : "Inactive"}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                      {new Date(deal.createdAt).toLocaleDateString()}
+                    <td className="hidden md:table-cell px-4 py-3 text-gray-700 dark:text-gray-300">
+                      {format(new Date(deal.createdAt), "dd MMM yyyy")}
                     </td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                    <td className="hidden md:table-cell px-4 py-3 text-gray-700 dark:text-gray-300">
                       {deal.deactivatedAt
-                        ? new Date(deal.deactivatedAt).toLocaleDateString()
+                        ? format(new Date(deal.deactivatedAt), "dd MMM yyyy")
                         : "-"}
                     </td>
                     <td className="px-4 py-3 text-right">

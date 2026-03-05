@@ -105,6 +105,13 @@ export async function getAccount(): Promise<AccountInfo> {
   return apiFetch<AccountInfo>("/account");
 }
 
+export async function updateDisplayName(displayName: string): Promise<{ displayName: string }> {
+  return apiFetch<{ displayName: string }>("/account/display-name", {
+    method: "PUT",
+    body: JSON.stringify({ displayName }),
+  });
+}
+
 export async function getAgentCredentials(agentId: string): Promise<AgentCredentialInfo[]> {
   return apiFetch<AgentCredentialInfo[]>(`/agents/${agentId}/credentials`);
 }
@@ -265,4 +272,15 @@ export async function adminGiveCoupon(userId: string, couponId: string): Promise
     method: "POST",
     body: JSON.stringify({ couponId }),
   });
+}
+
+export async function adminOverridePlan(userId: string, planId: string): Promise<AdminUserInfo> {
+  return apiFetch<AdminUserInfo>(`/admin/users/${userId}/override-plan`, {
+    method: "POST",
+    body: JSON.stringify({ planId }),
+  });
+}
+
+export async function adminRevertPlan(userId: string): Promise<AdminUserInfo> {
+  return apiFetch<AdminUserInfo>(`/admin/users/${userId}/revert-plan`, { method: "POST" });
 }

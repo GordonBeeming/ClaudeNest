@@ -65,6 +65,30 @@ public class AccountController(NestDbContext db, IStripeService stripeService, T
         });
     }
 
+    [HttpPut("display-name")]
+    public async Task<IActionResult> UpdateDisplayName([FromBody] UpdateDisplayNameRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.DisplayName))
+            return BadRequest("Display name is required");
+
+        if (request.DisplayName.Length > 200)
+            return BadRequest("Display name is too long");
+
+        var auth0UserId = User.FindFirst("sub")?.Value;
+        if (auth0UserId is null) return Unauthorized();
+
+        var user = await db.Users
+            .AsTracking()
+            .FirstOrDefaultAsync(u => u.Auth0UserId == auth0UserId);
+
+        if (user is null) return NotFound();
+
+        user.DisplayName = request.DisplayName.Trim();
+        await db.SaveChangesAsync();
+
+        return Ok(new { user.DisplayName });
+    }
+
     private static readonly HashSet<string> ValidPermissionModes = ["default", "acceptEdits", "dontAsk", "bypassPermissions", "plan"];
 
     [HttpPost("permission-mode")]
@@ -293,3 +317,4 @@ public class AccountController(NestDbContext db, IStripeService stripeService, T
 public record SelectPlanRequest(Guid PlanId, string? CouponCode = null);
 public record SetPermissionModeRequest(string Mode);
 public record RedeemCouponRequest(string Code);
+public record UpdateDisplayNameRequest(string DisplayName);

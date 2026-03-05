@@ -138,6 +138,8 @@ export interface CompanyDeal {
   isActive: boolean;
   createdAt: string;
   deactivatedAt: string | null;
+  userCount: number;
+  overriddenCount: number;
 }
 
 export interface AdminUserInfo {
@@ -156,6 +158,8 @@ export interface AdminUserInfo {
   hasStripeSubscription: boolean;
   activeCoupon: { couponId: string; code: string; freeUntil: string } | null;
   companyDealDomain: string | null;
+  companyDealPlanId: string | null;
+  companyDealPlanName: string | null;
 }
 
 export interface CouponValidation {

@@ -1,16 +1,21 @@
 import { useState, useEffect, useRef } from "react";
-import { UsersRound, RefreshCw, XCircle, ChevronDown, ChevronLeft, ChevronRight, Gift, Ban, ShieldCheck, ShieldOff } from "lucide-react";
+import { UsersRound, RefreshCw, XCircle, ChevronDown, ChevronLeft, ChevronRight, Gift, Ban, ShieldCheck, ShieldOff, ArrowUpCircle, RotateCcw } from "lucide-react";
 import { clsx } from "clsx";
+import { format } from "date-fns";
 import {
   getAdminUsers,
   getAdminCompanyDeals,
   getAdminCoupons,
+  getPlans,
   adminCancelSubscription,
   adminGiveCoupon,
   adminToggleAdmin,
+  adminOverridePlan,
+  adminRevertPlan,
 } from "../../api";
-import type { AdminUserInfo, CompanyDeal, CouponInfo } from "../../types";
+import type { AdminUserInfo, CompanyDeal, CouponInfo, PlanInfo } from "../../types";
 import { formatDiscountDescription } from "../../types";
+import { Select } from "../../components/Select";
 
 const PAGE_SIZE = 25;
 
@@ -43,12 +48,16 @@ function ActionsDropdown({
   onCancelSubscription,
   onGiveCoupon,
   onToggleAdmin,
+  onOverridePlan,
+  onRevertPlan,
   actionLoading,
 }: {
   user: AdminUserInfo;
   onCancelSubscription: (u: AdminUserInfo) => void;
   onGiveCoupon: (userId: string) => void;
   onToggleAdmin: (u: AdminUserInfo) => void;
+  onOverridePlan: (userId: string) => void;
+  onRevertPlan: (u: AdminUserInfo) => void;
   actionLoading: string | null;
 }) {
   const [open, setOpen] = useState(false);
@@ -97,6 +106,24 @@ function ActionsDropdown({
             <Gift className="h-3.5 w-3.5" />
             Give coupon
           </button>
+          {user.companyDealDomain && !user.hasStripeSubscription && (
+            <button
+              onClick={() => { setOpen(false); onOverridePlan(user.id); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              <ArrowUpCircle className="h-3.5 w-3.5" />
+              Override plan
+            </button>
+          )}
+          {user.companyDealDomain && user.companyDealPlanName && user.planName !== user.companyDealPlanName && (
+            <button
+              onClick={() => { setOpen(false); onRevertPlan(user); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-yellow-600 hover:bg-yellow-50 dark:text-yellow-400 dark:hover:bg-yellow-900/20"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Revert to deal plan
+            </button>
+          )}
           <button
             onClick={() => { setOpen(false); onToggleAdmin(user); }}
             className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
@@ -125,6 +152,7 @@ export function Users() {
   const [page, setPage] = useState(1);
   const [deals, setDeals] = useState<CompanyDeal[]>([]);
   const [coupons, setCoupons] = useState<CouponInfo[]>([]);
+  const [plans, setPlans] = useState<PlanInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -134,6 +162,8 @@ export function Users() {
 
   const [giveCouponUserId, setGiveCouponUserId] = useState<string | null>(null);
   const [selectedCouponId, setSelectedCouponId] = useState("");
+  const [overridePlanUserId, setOverridePlanUserId] = useState<string | null>(null);
+  const [selectedOverridePlanId, setSelectedOverridePlanId] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   function loadUsers(p: number) {
@@ -165,6 +195,7 @@ export function Users() {
       }),
       getAdminCompanyDeals().then(setDeals),
       getAdminCoupons().then(setCoupons),
+      getPlans().then(setPlans),
     ])
       .catch(() => setError("Failed to load data"))
       .finally(() => setLoading(false));
@@ -237,6 +268,45 @@ export function Users() {
     }
   }
 
+  async function handleOverridePlan(userId: string) {
+    if (!selectedOverridePlanId) return;
+
+    setActionLoading(userId);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const updated = await adminOverridePlan(userId, selectedOverridePlanId);
+      setUsers((prev) => prev.map((u) => (u.id === userId ? updated : u)));
+      setSuccess(`Plan overridden successfully`);
+      setOverridePlanUserId(null);
+      setSelectedOverridePlanId("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to override plan");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleRevertPlan(user: AdminUserInfo) {
+    if (!confirm(`Revert ${user.email} back to the company deal plan (${user.companyDealPlanName})?`))
+      return;
+
+    setActionLoading(user.id);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const updated = await adminRevertPlan(user.id);
+      setUsers((prev) => prev.map((u) => (u.id === user.id ? updated : u)));
+      setSuccess(`Plan reverted to company deal plan for ${user.email}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to revert plan");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   const activeDealDomains = deals.filter((d) => d.isActive).map((d) => d.domain);
   const activeCoupons = coupons.filter((c) => c.isActive);
 
@@ -269,28 +339,26 @@ export function Users() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
-        <select
+        <Select
           value={domainFilter}
-          onChange={(e) => setDomainFilter(e.target.value)}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-nest-500 focus:outline-none focus:ring-1 focus:ring-nest-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-        >
-          <option value="">All domains</option>
-          {activeDealDomains.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
+          onChange={setDomainFilter}
+          placeholder="All domains"
+          options={[
+            { value: "", label: "All domains" },
+            ...activeDealDomains.map((d) => ({ value: d, label: d })),
+          ]}
+        />
 
-        <select
+        <Select
           value={couponFilter}
-          onChange={(e) => setCouponFilter(e.target.value as "" | "true" | "false")}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-nest-500 focus:outline-none focus:ring-1 focus:ring-nest-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-        >
-          <option value="">Any coupon status</option>
-          <option value="true">Has active coupon</option>
-          <option value="false">No active coupon</option>
-        </select>
+          onChange={(v) => setCouponFilter(v as "" | "true" | "false")}
+          placeholder="Any coupon status"
+          options={[
+            { value: "", label: "Any coupon status" },
+            { value: "true", label: "Has active coupon" },
+            { value: "false", label: "No active coupon" },
+          ]}
+        />
 
         {(domainFilter || couponFilter) && (
           <button
@@ -319,18 +387,17 @@ export function Users() {
               Select a coupon to apply to{" "}
               <strong>{users.find((u) => u.id === giveCouponUserId)?.email}</strong>
             </p>
-            <select
+            <Select
               value={selectedCouponId}
-              onChange={(e) => setSelectedCouponId(e.target.value)}
-              className="mb-4 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-nest-500 focus:outline-none focus:ring-1 focus:ring-nest-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-            >
-              <option value="">Select a coupon...</option>
-              {activeCoupons.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.code} — {c.planName} ({formatDiscountDescription(c.discountType, c.freeMonths, c.percentOff, c.amountOffCents, c.freeDays, c.durationMonths)})
-                </option>
-              ))}
-            </select>
+              onChange={setSelectedCouponId}
+              placeholder="Select a coupon..."
+              className="mb-4"
+              options={activeCoupons.map((c) => ({
+                value: c.id,
+                label: `${c.code} — ${c.planName}`,
+                description: formatDiscountDescription(c.discountType, c.freeMonths, c.percentOff, c.amountOffCents, c.freeDays, c.durationMonths),
+              }))}
+            />
             <div className="flex items-center gap-3">
               <button
                 onClick={() => handleGiveCoupon(giveCouponUserId)}
@@ -353,6 +420,72 @@ export function Users() {
           </div>
         </div>
       )}
+
+      {/* Override Plan Modal */}
+      {overridePlanUserId && (() => {
+        const targetUser = users.find((u) => u.id === overridePlanUserId);
+        const dealPlan = targetUser?.companyDealPlanId
+          ? plans.find((p) => p.id === targetUser.companyDealPlanId)
+          : null;
+        const eligiblePlans = dealPlan
+          ? plans.filter((p) => p.sortOrder > dealPlan.sortOrder && p.id !== targetUser?.companyDealPlanId)
+          : [];
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="mx-4 w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Override Plan</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                Override the plan for{" "}
+                <strong>{targetUser?.email}</strong>
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                Current deal plan: <strong>{targetUser?.companyDealPlanName}</strong>
+                {targetUser?.planName !== targetUser?.companyDealPlanName && (
+                  <> (currently on: <strong>{targetUser?.planName}</strong>)</>
+                )}
+              </p>
+              {eligiblePlans.length === 0 ? (
+                <p className="mb-4 text-sm text-yellow-600 dark:text-yellow-400">
+                  No higher plans available to override with.
+                </p>
+              ) : (
+                <Select
+                  value={selectedOverridePlanId}
+                  onChange={setSelectedOverridePlanId}
+                  placeholder="Select a plan..."
+                  className="mb-4"
+                  options={eligiblePlans.map((p) => ({
+                    value: p.id,
+                    label: p.name,
+                  }))}
+                />
+              )}
+              <div className="flex items-center gap-3">
+                {eligiblePlans.length > 0 && (
+                  <button
+                    onClick={() => handleOverridePlan(overridePlanUserId)}
+                    disabled={!selectedOverridePlanId || actionLoading === overridePlanUserId}
+                    className="flex items-center gap-1.5 rounded-lg bg-nest-500 px-4 py-2 text-sm font-medium text-white hover:bg-nest-600 transition-colors disabled:opacity-50"
+                  >
+                    {actionLoading === overridePlanUserId && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                    Override Plan
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setOverridePlanUserId(null);
+                    setSelectedOverridePlanId("");
+                  }}
+                  className="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Users Table */}
       <section className="rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
@@ -406,7 +539,7 @@ export function Users() {
                         <div>
                           <span className="font-mono text-xs">{user.activeCoupon.code}</span>
                           <div className="text-xs text-gray-500 dark:text-gray-400">
-                            until {new Date(user.activeCoupon.freeUntil).toLocaleDateString()}
+                            until {format(new Date(user.activeCoupon.freeUntil), "dd MMM yyyy")}
                           </div>
                         </div>
                       ) : (
@@ -414,7 +547,7 @@ export function Users() {
                       )}
                     </td>
                     <td className="hidden md:table-cell px-4 py-3 text-gray-700 dark:text-gray-300">
-                      {new Date(user.createdAt).toLocaleDateString()}
+                      {format(new Date(user.createdAt), "dd MMM yyyy")}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <ActionsDropdown
@@ -422,6 +555,8 @@ export function Users() {
                         onCancelSubscription={handleCancelSubscription}
                         onGiveCoupon={setGiveCouponUserId}
                         onToggleAdmin={handleToggleAdmin}
+                        onOverridePlan={setOverridePlanUserId}
+                        onRevertPlan={handleRevertPlan}
                         actionLoading={actionLoading}
                       />
                     </td>

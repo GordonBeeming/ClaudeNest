@@ -20,7 +20,21 @@ public class AdminCompanyDealsController(NestDbContext db, TimeProvider timeProv
         var deals = await db.CompanyDeals
             .Include(d => d.Plan)
             .OrderByDescending(d => d.CreatedAt)
-            .Select(d => new
+            .ToListAsync();
+
+        // Compute user counts per domain in a single query
+        var domains = deals.Select(d => d.Domain).ToList();
+        var userStats = await db.Users
+            .Where(u => domains.Any(domain => u.Email.ToLower().EndsWith("@" + domain)))
+            .Select(u => new { u.Email, u.Account.PlanId })
+            .ToListAsync();
+
+        var result = deals.Select(d =>
+        {
+            var domainSuffix = "@" + d.Domain;
+            var domainUsers = userStats.Where(u => u.Email.ToLower().EndsWith(domainSuffix)).ToList();
+
+            return new
             {
                 d.Id,
                 d.Domain,
@@ -28,11 +42,13 @@ public class AdminCompanyDealsController(NestDbContext db, TimeProvider timeProv
                 PlanName = d.Plan.Name,
                 d.IsActive,
                 d.CreatedAt,
-                d.DeactivatedAt
-            })
-            .ToListAsync();
+                d.DeactivatedAt,
+                UserCount = domainUsers.Count,
+                OverriddenCount = domainUsers.Count(u => u.PlanId != d.PlanId),
+            };
+        }).ToList();
 
-        return Ok(deals);
+        return Ok(result);
     }
 
     [HttpPost]

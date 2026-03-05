@@ -1,12 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import { User, CreditCard, BarChart3, RefreshCw, AlertTriangle, ArrowRight, Server, Settings, Check, Receipt } from "lucide-react";
+import { User, CreditCard, BarChart3, RefreshCw, AlertTriangle, ArrowRight, Server, Settings, Check, Receipt, Pencil } from "lucide-react";
 import { clsx } from "clsx";
 import { useUserContext } from "../contexts/UserContext";
-import { getAccount, getAgents, updatePermissionMode, createBillingPortalSession, getLedger } from "../api";
+import { getAccount, getAgents, updatePermissionMode, createBillingPortalSession, getLedger, updateDisplayName } from "../api";
 import type { AccountInfo, Agent, LedgerEntry, PaginatedResult } from "../types";
 import { format } from "date-fns";
 import { AgentCredentialManager } from "../components/AgentCredentialManager";
+import { Select } from "../components/Select";
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
@@ -79,7 +80,7 @@ const PERMISSION_MODES = [
 ];
 
 export function AccountPage() {
-  const { user } = useUserContext();
+  const { user, refreshUser } = useUserContext();
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,6 +88,10 @@ export function AccountPage() {
   const [billingRedirecting, setBillingRedirecting] = useState(false);
   const [ledger, setLedger] = useState<PaginatedResult<LedgerEntry> | null>(null);
   const [ledgerPage, setLedgerPage] = useState(1);
+  const [editingName, setEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState("");
+  const [nameSaving, setNameSaving] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     Promise.all([
@@ -138,12 +143,77 @@ export function AccountPage() {
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Profile</h2>
         </div>
         <dl className="space-y-3 text-sm">
-          {user?.displayName && (
-            <div className="flex justify-between">
-              <dt className="text-gray-500 dark:text-gray-400">Name</dt>
-              <dd className="font-medium text-gray-900 dark:text-white">{user.displayName}</dd>
-            </div>
-          )}
+          <div className="flex justify-between items-center">
+            <dt className="text-gray-500 dark:text-gray-400">Name</dt>
+            <dd className="font-medium text-gray-900 dark:text-white">
+              {editingName ? (
+                <form
+                  className="flex items-center gap-2"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const trimmed = nameValue.trim();
+                    if (!trimmed || trimmed === user?.displayName) {
+                      setEditingName(false);
+                      return;
+                    }
+                    setNameSaving(true);
+                    try {
+                      await updateDisplayName(trimmed);
+                      await refreshUser();
+                      setEditingName(false);
+                    } catch {
+                      // keep editing open on error
+                    } finally {
+                      setNameSaving(false);
+                    }
+                  }}
+                >
+                  <input
+                    ref={nameInputRef}
+                    type="text"
+                    value={nameValue}
+                    onChange={(e) => setNameValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setEditingName(false);
+                    }}
+                    disabled={nameSaving}
+                    className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white focus:border-nest-500 focus:outline-none focus:ring-1 focus:ring-nest-500"
+                    maxLength={200}
+                    autoFocus
+                  />
+                  <button
+                    type="submit"
+                    disabled={nameSaving}
+                    className="rounded-md bg-nest-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-nest-700 disabled:opacity-50"
+                  >
+                    {nameSaving ? "Saving..." : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingName(false)}
+                    disabled={nameSaving}
+                    className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                  >
+                    Cancel
+                  </button>
+                </form>
+              ) : (
+                <span className="flex items-center gap-2">
+                  {user?.displayName || "—"}
+                  <button
+                    onClick={() => {
+                      setNameValue(user?.displayName || "");
+                      setEditingName(true);
+                    }}
+                    className="text-gray-400 hover:text-nest-600 dark:hover:text-nest-400"
+                    title="Edit name"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              )}
+            </dd>
+          </div>
           {user?.email && (
             <div className="flex justify-between">
               <dt className="text-gray-500 dark:text-gray-400">Email</dt>
@@ -176,7 +246,7 @@ export function AccountPage() {
               <div className="flex justify-between">
                 <dt className="text-gray-500 dark:text-gray-400">Coupon</dt>
                 <dd className="font-medium text-green-600 dark:text-green-400">
-                  Free until {format(new Date(account.activeCoupon.freeUntil), "MMM d, yyyy")} via coupon {account.activeCoupon.code}
+                  Free until {format(new Date(account.activeCoupon.freeUntil), "dd MMM yyyy")} via coupon {account.activeCoupon.code}
                 </dd>
               </div>
             )}
@@ -209,7 +279,7 @@ export function AccountPage() {
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800 dark:bg-amber-950/30">
                 <p className="text-sm text-amber-700 dark:text-amber-400">
                   Your subscription is set to cancel. You will have access until{" "}
-                  <span className="font-medium">{format(new Date(account.currentPeriodEnd), "MMM d, yyyy 'at' h:mm a")}</span>.{" "}
+                  <span className="font-medium">{format(new Date(account.currentPeriodEnd), "dd MMM yyyy")}</span>.{" "}
                   <button
                     onClick={handleManageBilling}
                     className="font-medium underline hover:no-underline"
@@ -224,7 +294,7 @@ export function AccountPage() {
               <div className="flex justify-between">
                 <dt className="text-gray-500 dark:text-gray-400">Next billing date</dt>
                 <dd className="font-medium text-gray-900 dark:text-white">
-                  {format(new Date(account.currentPeriodEnd), "MMM d, yyyy 'at' h:mm a")}
+                  {format(new Date(account.currentPeriodEnd), "dd MMM yyyy")}
                 </dd>
               </div>
             )}
@@ -248,7 +318,7 @@ export function AccountPage() {
                   </a>
                 </span>
               </>
-            ) : (
+            ) : account.subscriptionStatus !== "Active" && account.subscriptionStatus !== "Trialing" ? (
               <Link
                 to="/plans"
                 className="inline-flex items-center gap-1.5 text-sm font-medium text-nest-600 hover:text-nest-700 dark:text-nest-400 dark:hover:text-nest-300"
@@ -256,7 +326,7 @@ export function AccountPage() {
                 Choose a plan
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
-            )}
+            ) : null}
           </div>
         </section>
       )}
@@ -273,28 +343,25 @@ export function AccountPage() {
             Permission mode
           </label>
           <div className="relative">
-            <select
+            <Select
               value={account.permissionMode}
-              onChange={async (e) => {
-                const mode = e.target.value;
+              onChange={async (mode) => {
+                const prev = account.permissionMode;
                 setAccount({ ...account, permissionMode: mode });
                 try {
                   await updatePermissionMode(mode);
                   setPermissionSaved(true);
                   setTimeout(() => setPermissionSaved(false), 2000);
                 } catch {
-                  // Revert on error
-                  setAccount((prev) => prev ? { ...prev, permissionMode: account.permissionMode } : prev);
+                  setAccount((a) => a ? { ...a, permissionMode: prev } : a);
                 }
               }}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-nest-500 focus:outline-none focus:ring-1 focus:ring-nest-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-            >
-              {PERMISSION_MODES.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
+              options={PERMISSION_MODES.map((m) => ({
+                value: m.value,
+                label: m.label,
+                description: m.description,
+              }))}
+            />
             {permissionSaved && (
               <span className="absolute right-10 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
                 <Check className="h-3.5 w-3.5" />
@@ -302,10 +369,6 @@ export function AccountPage() {
               </span>
             )}
           </div>
-
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            {PERMISSION_MODES.find((m) => m.value === account.permissionMode)?.description}
-          </p>
         </section>
       )}
 
@@ -346,7 +409,7 @@ export function AccountPage() {
                   {ledger.items.map((entry) => (
                     <tr key={entry.id} className="border-b border-gray-100 last:border-0 dark:border-gray-800">
                       <td className="px-4 py-2.5 text-gray-600 dark:text-gray-300">
-                        {format(new Date(entry.createdAt), "MMM d, yyyy")}
+                        {format(new Date(entry.createdAt), "dd MMM yyyy")}
                       </td>
                       <td className="px-4 py-2.5 text-gray-900 dark:text-white">
                         {entry.description}

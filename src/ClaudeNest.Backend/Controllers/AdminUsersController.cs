@@ -29,7 +29,8 @@ public class AdminUsersController(NestDbContext db, IStripeService stripeService
 
         var activeDeals = await db.CompanyDeals
             .Where(d => d.IsActive)
-            .Select(d => d.Domain)
+            .Include(d => d.Plan)
+            .Select(d => new { d.Domain, d.PlanId, PlanName = d.Plan.Name })
             .ToListAsync();
 
         var query = db.Users
@@ -69,7 +70,7 @@ public class AdminUsersController(NestDbContext db, IStripeService stripeService
                 .FirstOrDefault(r => r.FreeUntil > now);
 
             var emailDomain = u.Email.Contains('@') ? u.Email.Split('@')[1].ToLowerInvariant() : null;
-            var matchedDeal = emailDomain != null && activeDeals.Contains(emailDomain) ? emailDomain : null;
+            var matchedDeal = emailDomain != null ? activeDeals.FirstOrDefault(d => d.Domain == emailDomain) : null;
 
             return new
             {
@@ -92,7 +93,9 @@ public class AdminUsersController(NestDbContext db, IStripeService stripeService
                     Code = activeRedemption.Coupon.Code,
                     FreeUntil = activeRedemption.FreeUntil
                 } : null,
-                CompanyDealDomain = matchedDeal
+                CompanyDealDomain = matchedDeal?.Domain,
+                CompanyDealPlanId = matchedDeal?.PlanId,
+                CompanyDealPlanName = matchedDeal?.PlanName,
             };
         }).ToList();
 
@@ -131,7 +134,7 @@ public class AdminUsersController(NestDbContext db, IStripeService stripeService
 
         await db.SaveChangesAsync();
 
-        return Ok(BuildUserResponse(user));
+        return Ok(await BuildUserResponseAsync(user));
     }
 
     [HttpPost("{id:guid}/toggle-admin")]
@@ -160,7 +163,7 @@ public class AdminUsersController(NestDbContext db, IStripeService stripeService
         user.IsAdmin = !user.IsAdmin;
         await db.SaveChangesAsync();
 
-        return Ok(BuildUserResponse(user));
+        return Ok(await BuildUserResponseAsync(user));
     }
 
     [HttpPost("{id:guid}/give-coupon")]
@@ -211,16 +214,111 @@ public class AdminUsersController(NestDbContext db, IStripeService stripeService
         // Reload to get updated coupon data
         await db.Entry(redemption).Reference(r => r.Coupon).LoadAsync();
 
-        return Ok(BuildUserResponse(user));
+        return Ok(await BuildUserResponseAsync(user));
     }
 
-    private object BuildUserResponse(Data.Entities.User user)
+    [HttpPost("{id:guid}/override-plan")]
+    public async Task<IActionResult> OverridePlan(Guid id, [FromBody] OverridePlanRequest request)
+    {
+        var user = await db.Users
+            .AsTracking()
+            .Include(u => u.Account)
+                .ThenInclude(a => a!.Plan)
+            .Include(u => u.Account)
+                .ThenInclude(a => a!.CouponRedemptions)
+                    .ThenInclude(r => r.Coupon)
+            .FirstOrDefaultAsync(u => u.Id == id);
+
+        if (user is null) return NotFound();
+
+        if (!string.IsNullOrEmpty(user.Account.StripeSubscriptionId))
+            return BadRequest("Cannot override plan for a user with an active Stripe subscription");
+
+        var emailDomain = user.Email.Contains('@') ? user.Email.Split('@')[1].ToLowerInvariant() : null;
+        if (emailDomain is null)
+            return BadRequest("User does not have a valid email domain");
+
+        var deal = await db.CompanyDeals
+            .Where(d => d.IsActive && d.Domain == emailDomain)
+            .Include(d => d.Plan)
+            .FirstOrDefaultAsync();
+
+        if (deal is null)
+            return BadRequest("User's email domain does not match any active company deal");
+
+        var newPlan = await db.Plans.FirstOrDefaultAsync(p => p.Id == request.PlanId);
+        if (newPlan is null) return BadRequest("Plan not found");
+        if (!newPlan.IsActive) return BadRequest("Plan is not active");
+
+        if (newPlan.SortOrder <= deal.Plan.SortOrder)
+            return BadRequest("Override plan must be better (higher sort order) than the company deal plan");
+
+        user.Account.PlanId = newPlan.Id;
+        if (user.Account.SubscriptionStatus == SubscriptionStatus.None)
+        {
+            user.Account.SubscriptionStatus = SubscriptionStatus.Active;
+        }
+
+        await db.SaveChangesAsync();
+
+        // Reload plan navigation property
+        await db.Entry(user.Account).Reference(a => a.Plan).LoadAsync();
+
+        return Ok(await BuildUserResponseAsync(user));
+    }
+
+    [HttpPost("{id:guid}/revert-plan")]
+    public async Task<IActionResult> RevertPlan(Guid id)
+    {
+        var user = await db.Users
+            .AsTracking()
+            .Include(u => u.Account)
+                .ThenInclude(a => a!.Plan)
+            .Include(u => u.Account)
+                .ThenInclude(a => a!.CouponRedemptions)
+                    .ThenInclude(r => r.Coupon)
+            .FirstOrDefaultAsync(u => u.Id == id);
+
+        if (user is null) return NotFound();
+
+        var emailDomain = user.Email.Contains('@') ? user.Email.Split('@')[1].ToLowerInvariant() : null;
+        if (emailDomain is null)
+            return BadRequest("User does not have a valid email domain");
+
+        var deal = await db.CompanyDeals
+            .Where(d => d.IsActive && d.Domain == emailDomain)
+            .Include(d => d.Plan)
+            .FirstOrDefaultAsync();
+
+        if (deal is null)
+            return BadRequest("User's email domain does not match any active company deal");
+
+        if (user.Account.PlanId == deal.PlanId)
+            return BadRequest("User's plan is already the company deal plan");
+
+        user.Account.PlanId = deal.PlanId;
+
+        await db.SaveChangesAsync();
+
+        // Reload plan navigation property
+        await db.Entry(user.Account).Reference(a => a.Plan).LoadAsync();
+
+        return Ok(await BuildUserResponseAsync(user));
+    }
+
+    private async Task<object> BuildUserResponseAsync(Data.Entities.User user)
     {
         var now = DateTimeOffset.UtcNow;
         var activeRedemption = user.Account.CouponRedemptions
             .FirstOrDefault(r => r.FreeUntil > now);
 
         var emailDomain = user.Email.Contains('@') ? user.Email.Split('@')[1].ToLowerInvariant() : null;
+        var deal = emailDomain != null
+            ? await db.CompanyDeals
+                .Where(d => d.IsActive && d.Domain == emailDomain)
+                .Include(d => d.Plan)
+                .FirstOrDefaultAsync()
+            : null;
 
         return new
         {
@@ -243,9 +341,12 @@ public class AdminUsersController(NestDbContext db, IStripeService stripeService
                 Code = activeRedemption.Coupon.Code,
                 FreeUntil = activeRedemption.FreeUntil
             } : null,
-            CompanyDealDomain = emailDomain
+            CompanyDealDomain = deal?.Domain,
+            CompanyDealPlanId = deal?.PlanId,
+            CompanyDealPlanName = deal?.Plan.Name,
         };
     }
 }
 
 public record GiveCouponRequest(Guid CouponId);
+public record OverridePlanRequest(Guid PlanId);
