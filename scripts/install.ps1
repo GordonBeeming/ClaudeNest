@@ -118,6 +118,38 @@ if (-not $Password) {
     exit 1
 }
 
+# Grant "Log on as a service" right (required for Windows Service logon)
+Write-Host "Granting 'Log on as a service' right to $AccountName..."
+try {
+    $tempDir = [System.IO.Path]::GetTempPath()
+    $exportFile = Join-Path $tempDir "claudenest_secpol.cfg"
+    $importFile = Join-Path $tempDir "claudenest_secpol_import.cfg"
+    $dbFile = Join-Path $tempDir "claudenest_secpol.sdb"
+
+    secedit /export /cfg $exportFile /quiet | Out-Null
+
+    $sid = (New-Object System.Security.Principal.NTAccount($AccountName)).Translate(
+        [System.Security.Principal.SecurityIdentifier]).Value
+    $policy = Get-Content $exportFile -Raw
+
+    if ($policy -match 'SeServiceLogonRight\s*=\s*(.*)') {
+        if ($Matches[1] -notmatch [regex]::Escape("*$sid")) {
+            $policy = $policy -replace '(SeServiceLogonRight\s*=\s*.*)', "`$1,*$sid"
+        }
+    } else {
+        $policy = $policy -replace '(\[Privilege Rights\])', "`$1`r`nSeServiceLogonRight = *$sid"
+    }
+
+    Set-Content $importFile $policy
+    secedit /configure /db $dbFile /cfg $importFile /quiet | Out-Null
+
+    Remove-Item $exportFile, $importFile, $dbFile -ErrorAction SilentlyContinue
+    Write-Host "Service logon right granted." -ForegroundColor Green
+} catch {
+    Write-Host "Warning: Could not grant 'Log on as a service' right: $_" -ForegroundColor Yellow
+    Write-Host "You may need to grant this manually via Local Security Policy." -ForegroundColor Yellow
+}
+
 # Run the install command
 Write-Host ""
 Write-Host "Pairing agent with backend..."

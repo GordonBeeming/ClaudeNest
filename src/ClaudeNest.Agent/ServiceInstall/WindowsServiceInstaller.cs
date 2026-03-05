@@ -43,7 +43,17 @@ public sealed class WindowsServiceInstaller(ILogger logger) : IServiceInstaller
                 $"failure {ServiceName} reset= 86400 actions= restart/60000/restart/60000/restart/60000", ct);
 
             // Start the service
-            await RunCommandAsync("sc.exe", $"start {ServiceName}", ct);
+            var startResult = await RunCommandAsync("sc.exe", $"start {ServiceName}", ct);
+            if (!startResult)
+            {
+                logger.LogError(
+                    "Windows Service was created but failed to start. " +
+                    "This is usually caused by incorrect credentials or a missing 'Log on as a service' right. " +
+                    "Check Event Viewer for details");
+                // Clean up the failed service
+                await RunCommandAsync("sc.exe", $"delete {ServiceName}", ct);
+                return false;
+            }
 
             logger.LogInformation("Windows Service installed and started");
             return true;
