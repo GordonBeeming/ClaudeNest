@@ -97,7 +97,7 @@ public class AdminCompanyDealsController(NestDbContext db, TimeProvider timeProv
     [HttpPatch("{id:guid}")]
     public async Task<IActionResult> UpdateDeal(Guid id, [FromBody] UpdateCompanyDealRequest request)
     {
-        var deal = await db.CompanyDeals.Include(d => d.Plan).FirstOrDefaultAsync(d => d.Id == id);
+        var deal = await db.CompanyDeals.AsTracking().Include(d => d.Plan).FirstOrDefaultAsync(d => d.Id == id);
         if (deal is null) return NotFound();
         if (!deal.IsActive) return BadRequest("Cannot edit an inactive deal");
 
@@ -137,10 +137,10 @@ public class AdminCompanyDealsController(NestDbContext db, TimeProvider timeProv
         });
     }
 
-    [HttpPut("{id:guid}/deactivate")]
+    [HttpPost("{id:guid}/deactivate")]
     public async Task<IActionResult> DeactivateDeal(Guid id)
     {
-        var deal = await db.CompanyDeals.FindAsync(id);
+        var deal = await db.CompanyDeals.AsTracking().FirstOrDefaultAsync(d => d.Id == id);
         if (deal is null) return NotFound();
 
         deal.IsActive = false;

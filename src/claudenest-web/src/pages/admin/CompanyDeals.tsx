@@ -1,19 +1,23 @@
 import { useState, useEffect } from "react";
-import { Building, Plus, RefreshCw, Trash2, Pencil } from "lucide-react";
+import { Building, Plus, RefreshCw, Trash2, Pencil, ChevronDown, ChevronRight } from "lucide-react";
 import { clsx } from "clsx";
 import { format } from "date-fns";
-import { getAdminCompanyDeals, createAdminCompanyDeal, updateAdminCompanyDeal, deactivateAdminCompanyDeal, getPlans } from "../../api";
-import type { CompanyDeal, PlanInfo } from "../../types";
+import { getAdminCompanyDeals, createAdminCompanyDeal, updateAdminCompanyDeal, deactivateAdminCompanyDeal, getPlans, getAdminCoupons } from "../../api";
+import type { CompanyDeal, PlanInfo, CouponInfo } from "../../types";
 import { PlanPicker } from "../../components/PlanPicker";
+import { AdminUserTable } from "../../components/AdminUserTable";
 
 export function CompanyDeals() {
   const [deals, setDeals] = useState<CompanyDeal[]>([]);
   const [plans, setPlans] = useState<PlanInfo[]>([]);
+  const [coupons, setCoupons] = useState<CouponInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const [expandedDealId, setExpandedDealId] = useState<string | null>(null);
 
   const [domain, setDomain] = useState("");
   const [planId, setPlanId] = useState("");
@@ -24,6 +28,7 @@ export function CompanyDeals() {
     Promise.all([
       getAdminCompanyDeals().then(setDeals),
       getPlans().then(setPlans),
+      getAdminCoupons().then(setCoupons),
     ])
       .catch(() => setError("Failed to load data"))
       .finally(() => setLoading(false));
@@ -183,23 +188,35 @@ export function CompanyDeals() {
             No company deals created yet
           </div>
         ) : (
-          <>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 dark:border-gray-800">
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Domain</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Plan</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Users</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Status</th>
-                  <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Created</th>
-                  <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Deactivated</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-500 dark:text-gray-400">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {deals.map((deal) => (
-                  <tr key={deal.id} className="border-b border-gray-50 last:border-0 dark:border-gray-800/50">
-                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{deal.domain}</td>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 dark:border-gray-800">
+                <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Domain</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Plan</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Users</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Status</th>
+                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Created</th>
+                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Deactivated</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-500 dark:text-gray-400">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deals.map((deal) => (
+                <>
+                  <tr key={deal.id} className="border-b border-gray-50 dark:border-gray-800/50">
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
+                      <button
+                        onClick={() => setExpandedDealId(expandedDealId === deal.id ? null : deal.id)}
+                        className="flex items-center gap-1.5 hover:text-nest-600 dark:hover:text-nest-400 transition-colors"
+                      >
+                        {expandedDealId === deal.id ? (
+                          <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
+                        ) : (
+                          <ChevronRight className="h-3.5 w-3.5 text-gray-400" />
+                        )}
+                        {deal.domain}
+                      </button>
+                    </td>
                     <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
                       {editingDealId === deal.id ? (
                         <PlanPicker plans={plans} value={editPlanId} onChange={setEditPlanId} required />
@@ -272,10 +289,17 @@ export function CompanyDeals() {
                       ) : null}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
+                  {expandedDealId === deal.id && (
+                    <tr key={`${deal.id}-users`}>
+                      <td colSpan={7} className="border-b border-gray-50 bg-gray-50/50 px-2 py-3 dark:border-gray-800/50 dark:bg-gray-800/20">
+                        <AdminUserTable domain={deal.domain} plans={plans} coupons={coupons} compact />
+                      </td>
+                    </tr>
+                  )}
+                </>
+              ))}
+            </tbody>
+          </table>
         )}
       </section>
     </div>

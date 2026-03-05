@@ -1,6 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { UsersRound, RefreshCw, XCircle, ChevronDown, ChevronLeft, ChevronRight, Gift, Ban, ShieldCheck, ShieldOff, ArrowUpCircle, RotateCcw } from "lucide-react";
-import { clsx } from "clsx";
+import { useState, useEffect } from "react";
+import { UsersRound, RefreshCw, XCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import {
   getAdminUsers,
@@ -16,135 +15,9 @@ import {
 import type { AdminUserInfo, CompanyDeal, CouponInfo, PlanInfo } from "../../types";
 import { formatDiscountDescription } from "../../types";
 import { Select } from "../../components/Select";
+import { StatusBadge, ActionsDropdown } from "../../components/AdminUserTable";
 
 const PAGE_SIZE = 25;
-
-function StatusBadge({ status, cancelAtPeriodEnd }: { status: string; cancelAtPeriodEnd: boolean }) {
-  if (cancelAtPeriodEnd && status === "Active") {
-    return (
-      <span className="rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
-        Cancelling
-      </span>
-    );
-  }
-
-  const styles: Record<string, string> = {
-    Active: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-    PastDue: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-    Cancelled: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
-    Trialing: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-    None: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500",
-  };
-
-  return (
-    <span className={clsx("rounded-full px-2.5 py-0.5 text-xs font-medium", styles[status] || styles.None)}>
-      {status}
-    </span>
-  );
-}
-
-function ActionsDropdown({
-  user,
-  onCancelSubscription,
-  onGiveCoupon,
-  onToggleAdmin,
-  onOverridePlan,
-  onRevertPlan,
-  actionLoading,
-}: {
-  user: AdminUserInfo;
-  onCancelSubscription: (u: AdminUserInfo) => void;
-  onGiveCoupon: (userId: string) => void;
-  onToggleAdmin: (u: AdminUserInfo) => void;
-  onOverridePlan: (userId: string) => void;
-  onRevertPlan: (u: AdminUserInfo) => void;
-  actionLoading: string | null;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        disabled={actionLoading === user.id}
-        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-      >
-        {actionLoading === user.id ? (
-          <RefreshCw className="h-3 w-3 animate-spin" />
-        ) : (
-          <>
-            Actions
-            <ChevronDown className="h-3 w-3" />
-          </>
-        )}
-      </button>
-      {open && (
-        <div className="absolute right-0 z-50 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
-          {user.hasStripeSubscription && (
-            <button
-              onClick={() => { setOpen(false); onCancelSubscription(user); }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-            >
-              <Ban className="h-3.5 w-3.5" />
-              Cancel subscription
-            </button>
-          )}
-          <button
-            onClick={() => { setOpen(false); onGiveCoupon(user.id); }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            <Gift className="h-3.5 w-3.5" />
-            Give coupon
-          </button>
-          {user.companyDealDomain && !user.hasStripeSubscription && (
-            <button
-              onClick={() => { setOpen(false); onOverridePlan(user.id); }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-            >
-              <ArrowUpCircle className="h-3.5 w-3.5" />
-              Override plan
-            </button>
-          )}
-          {user.companyDealDomain && user.companyDealPlanName && user.planName !== user.companyDealPlanName && (
-            <button
-              onClick={() => { setOpen(false); onRevertPlan(user); }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-yellow-600 hover:bg-yellow-50 dark:text-yellow-400 dark:hover:bg-yellow-900/20"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              Revert to deal plan
-            </button>
-          )}
-          <button
-            onClick={() => { setOpen(false); onToggleAdmin(user); }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            {user.isAdmin ? (
-              <>
-                <ShieldOff className="h-3.5 w-3.5" />
-                Remove admin
-              </>
-            ) : (
-              <>
-                <ShieldCheck className="h-3.5 w-3.5" />
-                Make admin
-              </>
-            )}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export function Users() {
   const [users, setUsers] = useState<AdminUserInfo[]>([]);
