@@ -12,6 +12,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  variables: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
@@ -123,3 +125,33 @@ jobs:
             claudenest-agent-osx-arm64
             scripts/install.sh
             scripts/install.ps1
+
+  update-backend-version:
+    runs-on: ubuntu-latest
+    needs: [determine-version, create-release]
+    environment: prod
+    concurrency:
+      group: deploy-infra
+      cancel-in-progress: false
+    steps:
+      - name: Update AGENT_LATEST_VERSION repo variable
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh variable set AGENT_LATEST_VERSION \
+            --repo ${{ github.repository }} \
+            --body "${{ needs.determine-version.outputs.version }}"
+
+      - name: Azure Login
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Update backend Agent__LatestVersion
+        run: |
+          az containerapp update \
+            --name ${{ vars.BACKEND_CONTAINER_APP }} \
+            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+            --set-env-vars Agent__LatestVersion=${{ needs.determine-version.outputs.version }}

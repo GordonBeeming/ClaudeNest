@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  group: deploy-infra
   cancel-in-progress: false
 
 jobs:
@@ -46,5 +46,6 @@ jobs:
               stripePublishableKey='${{ secrets.STRIPE_PUBLISHABLE_KEY }}' \
               stripeCurrency='${{ vars.STRIPE_CURRENCY }}' \
               cloudflareTunnelToken='${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}' \
+              agentLatestVersion='${{ vars.AGENT_LATEST_VERSION || '1.0.0' }}' \
               backendImageTag='latest' \
               frontendImageTag='latest'
