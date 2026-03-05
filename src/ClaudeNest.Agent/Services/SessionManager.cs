@@ -264,11 +264,75 @@ public sealed class SessionManager(
         return binary;
     }
 
+    private async Task<(bool IsAuthenticated, string? Error)> CheckClaudeAuthAsync(string claudeBinary, string workingDirectory)
+    {
+        try
+        {
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = claudeBinary,
+                    Arguments = "auth status",
+                    WorkingDirectory = workingDirectory,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+
+            process.Start();
+            var stdout = await process.StandardOutput.ReadToEndAsync();
+            var stderr = await process.StandardError.ReadToEndAsync();
+
+            // Wait with a timeout — auth status should be quick
+            var exited = process.WaitForExit(10_000);
+            if (!exited)
+            {
+                try { process.Kill(); } catch { /* best effort */ }
+                return (false, "Claude CLI auth check timed out. The CLI may be unresponsive.");
+            }
+
+            if (process.ExitCode != 0)
+            {
+                var errorDetail = !string.IsNullOrWhiteSpace(stderr) ? stderr.Trim() : stdout.Trim();
+                return (false, $"Claude CLI is not authenticated (exit code {process.ExitCode}). {errorDetail}".Trim());
+            }
+
+            // Check if the output confirms logged in — reject anything that isn't explicitly true
+            var isLoggedIn = stdout.Contains("\"loggedIn\": true", StringComparison.OrdinalIgnoreCase) ||
+                             stdout.Contains("\"loggedIn\":true", StringComparison.OrdinalIgnoreCase);
+            if (!isLoggedIn)
+            {
+                return (false, "Claude CLI is not logged in. Run 'claude login' interactively on this machine to authenticate.");
+            }
+
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Failed to check Claude CLI auth: {ex.Message}");
+        }
+    }
+
     private async Task SpawnProcessAsync(ManagedSession session)
     {
         try
         {
             var claudeBinary = ResolveBinaryPath(config.ClaudeBinary);
+
+            // Pre-flight: verify Claude CLI is authenticated
+            var (isAuthenticated, authError) = await CheckClaudeAuthAsync(claudeBinary, session.Path);
+            if (!isAuthenticated)
+            {
+                logger.LogError("Claude CLI auth check failed for session {SessionId}: {Error}", session.SessionId, authError);
+                session.State = SessionState.Crashed;
+                session.EndedAt = DateTime.UtcNow;
+                session.ErrorMessage = authError;
+                NotifyStatusChanged(session);
+                return;
+            }
 
             var arguments = !string.IsNullOrEmpty(session.PermissionMode) && session.PermissionMode != "default"
                 ? $"remote-control --permission-mode {session.PermissionMode}"
@@ -292,8 +356,35 @@ public sealed class SessionManager(
             session.Process = process;
             session.Pid = process.Id;
 
-            // Start capturing stderr immediately (before checking exit status)
-            var stderrTask = process.StandardError.ReadToEndAsync();
+            // Read stderr line-by-line so errors are reported in real-time
+            var stderrLines = new List<string>();
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    while (await process.StandardError.ReadLineAsync() is { } line)
+                    {
+                        stderrLines.Add(line);
+                        logger.LogWarning("Session {SessionId} stderr: {Line}", session.SessionId, line);
+
+                        // Report first stderr as error immediately (while process is still running)
+                        if (session.State is SessionState.Running or SessionState.Starting)
+                        {
+                            if (line.Contains("Workspace not trusted"))
+                                session.ErrorMessage = $"Workspace not trusted. Run 'claude' once in {session.Path} on the agent machine to accept the trust dialog, then try again.";
+                            else
+                                session.ErrorMessage = string.Join('\n', stderrLines).Trim();
+                            NotifyStatusChanged(session);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogDebug(ex, "Stderr reader ended for session {SessionId}", session.SessionId);
+                }
+            });
+
+            // Drain stdout to prevent buffer deadlock
             _ = process.StandardOutput.ReadToEndAsync();
 
             // Only transition to Running if the process hasn't already exited
@@ -303,23 +394,31 @@ public sealed class SessionManager(
                 NotifyStatusChanged(session);
             }
 
-            await process.WaitForExitAsync();
+            // Check for early exit — if the process dies within a few seconds, it likely failed to authenticate
+            var earlyExitCheck = Task.Delay(TimeSpan.FromSeconds(5));
+            var processExit = process.WaitForExitAsync();
+            var completed = await Task.WhenAny(earlyExitCheck, processExit);
 
-            // Capture stderr for error reporting
-            var stderr = await stderrTask;
-            if (!string.IsNullOrWhiteSpace(stderr))
+            if (completed == processExit && process.ExitCode != 0 && string.IsNullOrEmpty(session.ErrorMessage))
             {
-                logger.LogWarning("Session {SessionId} stderr: {StdErr}", session.SessionId, stderr);
+                session.ErrorMessage = stderrLines.Count > 0
+                    ? string.Join('\n', stderrLines).Trim()
+                    : $"claude remote-control exited immediately with code {process.ExitCode}. " +
+                      "This usually means the Claude CLI is not authenticated. " +
+                      "Run 'claude' interactively on this machine to complete the login flow.";
+            }
 
-                // Make trust errors actionable
-                if (stderr.Contains("Workspace not trusted"))
-                    session.ErrorMessage = $"Workspace not trusted. Run 'claude' once in {session.Path} on the agent machine to accept the trust dialog, then try again.";
-                else
-                    session.ErrorMessage = stderr.Trim();
+            if (completed == earlyExitCheck)
+            {
+                // Process survived the first 5 seconds — wait for it to finish
+                await processExit;
             }
 
             if (session.State is SessionState.Stopped or SessionState.Crashed)
                 return; // Already handled
+
+            if (stderrLines.Count > 0 && string.IsNullOrEmpty(session.ErrorMessage))
+                session.ErrorMessage = string.Join('\n', stderrLines).Trim();
 
             session.State = session.State == SessionState.Stopping || process.ExitCode == 0
                 ? SessionState.Stopped

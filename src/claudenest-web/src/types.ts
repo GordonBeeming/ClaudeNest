@@ -49,6 +49,7 @@ export interface Agent {
   allowedPaths: string[];
   version: string | null;
   architecture: string | null;
+  activeSessionCount: number;
 }
 
 export interface SessionStatus {

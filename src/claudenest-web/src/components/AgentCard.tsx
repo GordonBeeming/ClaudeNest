@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Monitor, Apple, Server, ChevronRight } from "lucide-react";
+import { Monitor, Apple, Server, ChevronRight, Activity } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { Agent } from "../types";
 import { OnlineBadge } from "./StatusBadge";
@@ -32,6 +32,12 @@ export function AgentCard({ agent }: { agent: Agent }) {
           {agent.version && (
             <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-gray-500 dark:bg-gray-800 dark:text-gray-400">
               v{agent.version}
+            </span>
+          )}
+          {agent.activeSessionCount > 0 && (
+            <span className="flex items-center gap-1 rounded bg-nest-50 px-1.5 py-0.5 text-xs font-medium text-nest-600 dark:bg-nest-950/50 dark:text-nest-400">
+              <Activity className="h-3 w-3" />
+              {agent.activeSessionCount} session{agent.activeSessionCount !== 1 ? "s" : ""}
             </span>
           )}
         </div>

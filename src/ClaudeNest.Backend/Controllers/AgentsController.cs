@@ -42,7 +42,9 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext,
                 a.Version,
                 a.Architecture,
                 MaxSessions = a.Account.Plan != null ? a.Account.Plan.MaxSessions : 0,
-                MaxAgents = a.Account.Plan != null ? a.Account.Plan.MaxAgents : 0
+                MaxAgents = a.Account.Plan != null ? a.Account.Plan.MaxAgents : 0,
+                ActiveSessionCount = a.Sessions.Count(s =>
+                    s.State == "Running" || s.State == "Starting" || s.State == "Requested")
             })
             .ToListAsync();
 
@@ -59,6 +61,7 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext,
             a.MaxAgents,
             a.Version,
             a.Architecture,
+            a.ActiveSessionCount,
             AllowedPaths = a.AllowedPathsJson is not null
                 ? JsonSerializer.Deserialize<List<string>>(a.AllowedPathsJson)
                 : new List<string>()
