@@ -253,7 +253,7 @@ function FolderNode({
               </div>
             )}
 
-            {depth > 0 && !blocked && !atSessionLimit && (
+            {!blocked && !atSessionLimit && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -266,14 +266,14 @@ function FolderNode({
               </button>
             )}
 
-            {depth > 0 && !blocked && atSessionLimit && (
+            {!blocked && atSessionLimit && (
               <span className="flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs text-amber-600 dark:bg-amber-950/50 dark:text-amber-400">
                 <Ban className="h-3 w-3" />
                 Session limit reached
               </span>
             )}
 
-            {depth > 0 && blocked && (
+            {blocked && (
               <span className="flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
                 <Ban className="h-3 w-3" />
                 Session active
