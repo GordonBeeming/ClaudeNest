@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Github, Star } from "lucide-react";
 
 const GITHUB_REPO = "GordonBeeming/ClaudeNest";
-const GITHUB_URL = `https://github.com/${GITHUB_REPO}`;
+const GITHUB_URL = `https://github.com/${GITHUB_REPO}/stargazers`;
 const CACHE_KEY = "claudenest_gh_stars";
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
