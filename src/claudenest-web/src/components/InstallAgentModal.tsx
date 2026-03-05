@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { X, Copy, Check, ChevronDown, ChevronRight, Download, Terminal, Clock } from "lucide-react";
+import { X, Copy, Check, ChevronDown, ChevronRight, Terminal, Clock } from "lucide-react";
 import { clsx } from "clsx";
-import { generatePairingToken, getLocalBuildAvailability, type LocalBuildAvailability } from "../api";
+import { generatePairingToken } from "../api";
 
 interface InstallAgentModalProps {
   open: boolean;
@@ -13,7 +13,7 @@ type Platform = "windows" | "macos" | "linux";
 interface PlatformConfig {
   label: string;
   icon: string;
-  downloads: { label: string; rid: string; filename: string }[];
+  installCommand: (backendUrl: string, token: string) => string;
   installNotes: string[];
 }
 
@@ -21,75 +21,42 @@ const PLATFORMS: Record<Platform, PlatformConfig> = {
   windows: {
     label: "Windows",
     icon: "🪟",
-    downloads: [
-      { label: "x64", rid: "win-x64", filename: "claudenest-agent-win-x64.exe" },
-    ],
+    installCommand: (backendUrl, token) =>
+      `irm '${backendUrl}/install.ps1?token=${token}' | iex`,
     installNotes: [
-      "Run the install command in an elevated (Administrator) PowerShell",
-      "The Windows binary is not yet code-signed — your browser may warn on download, click \"Keep\" to save the file",
-      "The agent will be installed as a Windows Service",
+      "Run this command in an elevated (Administrator) PowerShell",
+      "You will be prompted for your Windows password to register the agent as a Windows Service",
     ],
   },
   macos: {
     label: "macOS",
     icon: "🍎",
-    downloads: [
-      { label: "Apple Silicon (ARM)", rid: "osx-arm64", filename: "claudenest-agent-osx-arm64" },
-      { label: "Intel (x64)", rid: "osx-x64", filename: "claudenest-agent-osx-x64" },
-    ],
+    installCommand: (backendUrl, token) =>
+      `curl -sSL '${backendUrl}/install.sh?token=${token}' | bash`,
     installNotes: [
-      "After downloading, make the binary executable: chmod +x ./claudenest-agent-osx-*",
-      "The agent can be configured as a launchd service for auto-start",
+      "The agent will be installed as a macOS LaunchAgent for auto-start",
+      "The binary will be placed in ~/.claudenest/bin/",
     ],
   },
   linux: {
     label: "Linux",
     icon: "🐧",
-    downloads: [
-      { label: "x64", rid: "linux-x64", filename: "claudenest-agent-linux-x64" },
-    ],
+    installCommand: (backendUrl, token) =>
+      `curl -sSL '${backendUrl}/install.sh?token=${token}' | bash`,
     installNotes: [
-      "After downloading, make the binary executable: chmod +x ./claudenest-agent-linux-x64",
-      "The agent can be configured as a systemd service for auto-start",
+      "The agent will be installed as a systemd user service for auto-start",
+      "The binary will be placed in ~/.claudenest/bin/",
     ],
   },
 };
 
 const PLATFORM_ORDER: Platform[] = ["windows", "macos", "linux"];
 
-const RELEASE_BASE = "https://github.com/GordonBeeming/ClaudeNest/releases/latest/download";
-
 function detectPlatform(): Platform {
   const ua = navigator.userAgent.toLowerCase();
   if (ua.includes("win")) return "windows";
   if (ua.includes("mac")) return "macos";
   return "linux";
-}
-
-function getLocalBuildRidsForPlatform(platform: Platform, availableRids: string[]): { label: string; rid: string; filename: string }[] {
-  const ridMap: Record<Platform, { label: string; rid: string }[]> = {
-    windows: [{ label: "x64", rid: "win-x64" }],
-    macos: [
-      { label: "Apple Silicon (ARM)", rid: "osx-arm64" },
-      { label: "Intel (x64)", rid: "osx-x64" },
-    ],
-    linux: [{ label: "x64", rid: "linux-x64" }],
-  };
-
-  return ridMap[platform]
-    .filter((r) => availableRids.includes(r.rid))
-    .map((r) => ({
-      ...r,
-      filename: r.rid.startsWith("win-") ? `claudenest-agent-${r.rid}.exe` : `claudenest-agent-${r.rid}`,
-    }));
-}
-
-function installCommand(filename: string, token: string, backendUrl: string, options?: { localBuild?: boolean; devWorkspacePath?: string | null }): string {
-  const isWindows = filename.endsWith(".exe");
-  const pathArg = options?.devWorkspacePath ? ` --path "${options.devWorkspacePath}"` : "";
-  const run = `./${filename} install --token ${token} --backend ${backendUrl}${pathArg}`;
-  if (isWindows) return run;
-  return `chmod +x ./${filename} && ${run}`;
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -127,6 +94,8 @@ function PlatformSection({
   onToggle: () => void;
   isDetected: boolean;
 }) {
+  const command = config.installCommand(backendUrl, token);
+
   return (
     <div
       className={clsx(
@@ -156,50 +125,19 @@ function PlatformSection({
 
       {expanded && (
         <div className="space-y-4 border-t border-gray-200 px-4 py-4 dark:border-gray-700">
-          {/* Downloads */}
-          <div>
-            <h4 className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-              1. Download the agent
-            </h4>
-            <div className="flex flex-wrap gap-2">
-              {config.downloads.map((dl) => (
-                <a
-                  key={dl.rid}
-                  href={`${RELEASE_BASE}/${dl.filename}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                >
-                  <Download className="h-4 w-4" />
-                  {dl.label}
-                </a>
-              ))}
-            </div>
-          </div>
-
           {/* Install command */}
           <div>
-            <h4 className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-              2. Run the install command
-            </h4>
-            {config.downloads.map((dl) => (
-              <div key={dl.rid} className="mb-2">
-                {config.downloads.length > 1 && (
-                  <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">{dl.label}:</p>
-                )}
-                <div className="relative rounded-lg bg-gray-900 p-3 dark:bg-gray-800">
-                  <div className="flex items-start gap-2">
-                    <Terminal className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
-                    <code className="mr-8 break-all text-sm text-green-400">
-                      {installCommand(dl.filename, token, backendUrl)}
-                    </code>
-                    <div className="absolute right-2 top-2">
-                      <CopyButton text={installCommand(dl.filename, token, backendUrl)} />
-                    </div>
-                  </div>
+            <div className="relative rounded-lg bg-gray-900 p-3 dark:bg-gray-800">
+              <div className="flex items-start gap-2">
+                <Terminal className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
+                <code className="mr-8 break-all text-sm text-green-400">
+                  {command}
+                </code>
+                <div className="absolute right-2 top-2">
+                  <CopyButton text={command} />
                 </div>
               </div>
-            ))}
+            </div>
           </div>
 
           {/* Notes */}
@@ -228,7 +166,6 @@ export function InstallAgentModal({ open, onClose }: InstallAgentModalProps) {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [localBuild, setLocalBuild] = useState<LocalBuildAvailability | null>(null);
   const detectedPlatform = useMemo(() => detectPlatform(), []);
   const [expandedPlatforms, setExpandedPlatforms] = useState<Set<Platform>>(
     new Set([detectedPlatform]),
@@ -236,29 +173,24 @@ export function InstallAgentModal({ open, onClose }: InstallAgentModalProps) {
 
   const backendUrl = window.location.origin;
 
-  // Reset state and fetch data when modal opens
+  // Reset state and fetch token when modal opens
   useEffect(() => {
     if (!open) return;
 
     let cancelled = false;
 
-    // Fetch token and local build availability — setState calls in .then/.catch/.finally
-    // are in async callbacks, not synchronous in the effect body.
     Promise.resolve()
       .then(() => {
         if (cancelled) return;
         setLoading(true);
         setError(null);
         setToken(null);
-        setLocalBuild(null);
         setExpandedPlatforms(new Set([detectedPlatform]));
-        return Promise.all([generatePairingToken(), getLocalBuildAvailability()]);
+        return generatePairingToken();
       })
-      .then((results) => {
-        if (cancelled || !results) return;
-        const [tokenResult, buildAvailability] = results;
-        setToken(tokenResult.token);
-        setLocalBuild(buildAvailability);
+      .then((result) => {
+        if (cancelled || !result) return;
+        setToken(result.token);
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to generate token");
@@ -312,7 +244,7 @@ export function InstallAgentModal({ open, onClose }: InstallAgentModalProps) {
         </div>
 
         <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-          Download and install the ClaudeNest agent on the machine you want to connect.
+          Install the ClaudeNest agent on the machine you want to connect.
         </p>
 
         <div className="mt-4">
@@ -338,70 +270,6 @@ export function InstallAgentModal({ open, onClose }: InstallAgentModalProps) {
                   <p className="mt-0.5">It can only be used once. Close and reopen this dialog to generate a new token.</p>
                 </div>
               </div>
-
-              {localBuild?.available && localBuild.source === "local-build" && (() => {
-                const localDownloads = getLocalBuildRidsForPlatform(detectedPlatform, localBuild.rids);
-                if (localDownloads.length === 0) return null;
-                return (
-                  <div className="rounded-lg border border-green-300 bg-green-50/50 dark:border-green-700 dark:bg-green-950/30">
-                    <div className="flex items-center gap-3 px-4 py-3">
-                      <span className="text-lg">🔨</span>
-                      <span className="font-medium text-gray-900 dark:text-white">Local Build</span>
-                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/50 dark:text-green-300">
-                        Built from local source
-                      </span>
-                    </div>
-                    <div className="space-y-4 border-t border-green-200 px-4 py-4 dark:border-green-700">
-                      <div>
-                        <h4 className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                          1. Download the agent
-                        </h4>
-                        <div className="flex flex-wrap gap-2">
-                          {localDownloads.map((dl) => (
-                            <a
-                              key={dl.rid}
-                              href={`/api/agent-download/${dl.rid}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 rounded-lg border border-green-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-green-50 dark:border-green-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-green-900/30"
-                            >
-                              <Download className="h-4 w-4" />
-                              {dl.label}
-                            </a>
-                          ))}
-                        </div>
-                        <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                          Build may take a moment — the download starts after compilation completes.
-                        </p>
-                      </div>
-
-                      <div>
-                        <h4 className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                          2. Run the install command
-                        </h4>
-                        {localDownloads.map((dl) => (
-                          <div key={dl.rid} className="mb-2">
-                            {localDownloads.length > 1 && (
-                              <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">{dl.label}:</p>
-                            )}
-                            <div className="relative rounded-lg bg-gray-900 p-3 dark:bg-gray-800">
-                              <div className="flex items-start gap-2">
-                                <Terminal className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
-                                <code className="mr-8 break-all text-sm text-green-400">
-                                  {installCommand(dl.filename, token, backendUrl, { localBuild: true, devWorkspacePath: localBuild?.devWorkspacePath })}
-                                </code>
-                                <div className="absolute right-2 top-2">
-                                  <CopyButton text={installCommand(dl.filename, token, backendUrl, { localBuild: true, devWorkspacePath: localBuild?.devWorkspacePath })} />
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
 
               {PLATFORM_ORDER.map((p) => (
                 <PlatformSection

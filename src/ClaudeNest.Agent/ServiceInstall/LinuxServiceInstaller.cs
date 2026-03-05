@@ -10,7 +10,7 @@ public sealed class LinuxServiceInstaller(ILogger logger) : IServiceInstaller
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         ".config", "systemd", "user", $"{ServiceName}.service");
 
-    public async Task<bool> InstallAsync(string binaryPath, CancellationToken ct = default)
+    public async Task<bool> InstallAsync(string binaryPath, ServiceInstallOptions? options = null, CancellationToken ct = default)
     {
         try
         {
@@ -86,6 +86,47 @@ public sealed class LinuxServiceInstaller(ILogger logger) : IServiceInstaller
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to restart Linux systemd service");
+            return false;
+        }
+    }
+
+    public async Task<bool> UpdateBinPathAsync(string newBinaryPath, CancellationToken ct = default)
+    {
+        try
+        {
+            if (!File.Exists(ServiceFilePath))
+            {
+                logger.LogWarning("Cannot update binary path — service file does not exist");
+                return false;
+            }
+
+            // Rewrite service file with new binary path
+            var serviceContent = $"""
+                [Unit]
+                Description=ClaudeNest Agent
+                After=network-online.target
+                Wants=network-online.target
+
+                [Service]
+                Type=simple
+                ExecStart={newBinaryPath} run
+                Restart=on-failure
+                RestartSec=10
+                Environment=DOTNET_ROOT=%h/.dotnet
+
+                [Install]
+                WantedBy=default.target
+                """;
+
+            await File.WriteAllTextAsync(ServiceFilePath, serviceContent, ct);
+            await RunCommandAsync("systemctl", "--user daemon-reload", ct);
+
+            logger.LogInformation("Linux systemd service binary path updated to {Path}", newBinaryPath);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to update Linux systemd service binary path");
             return false;
         }
     }

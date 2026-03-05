@@ -25,4 +25,9 @@
     <PackageReference Include="Stripe.net" Version="50.4.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\..\scripts\install.sh" Link="scripts\install.sh" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\scripts\install.ps1" Link="scripts\install.ps1" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

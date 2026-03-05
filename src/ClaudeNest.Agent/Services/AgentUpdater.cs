@@ -1,4 +1,6 @@
 using System.Runtime.InteropServices;
+using ClaudeNest.Agent.Config;
+using ClaudeNest.Agent.ServiceInstall;
 
 namespace ClaudeNest.Agent.Services;
 
@@ -15,98 +17,190 @@ public sealed class AgentUpdater
 
     public Task<bool> CheckAndCompleteUpdateAsync()
     {
-        var markerPath = Path.Combine(GetClaudeNestDir(), "update-pending");
+        var claudeNestDir = GetClaudeNestDir();
+        var markerPath = Path.Combine(claudeNestDir, "update-pending");
         if (!File.Exists(markerPath))
             return Task.FromResult(false);
 
-        // Clean up
+        // Read the new version from the marker
+        var newVersion = File.ReadAllText(markerPath).Trim();
+
+        // Clean up the marker
         File.Delete(markerPath);
-        var updatesDir = Path.Combine(GetClaudeNestDir(), "updates");
+
+        // Clean up legacy updates directory if it exists
+        var updatesDir = Path.Combine(claudeNestDir, "updates");
         if (Directory.Exists(updatesDir))
             Directory.Delete(updatesDir, true);
 
-        _logger.LogInformation("Update completed successfully");
+        // Clean up old versioned binaries (keep current + one previous)
+        CleanupOldBinaries(newVersion);
+
+        _logger.LogInformation("Update completed successfully to version {Version}", newVersion);
         return Task.FromResult(true);
     }
 
     public async Task UpdateAsync(string downloadUrl, string newVersion, Func<Task> stopSessionsAsync, CancellationToken ct = default)
     {
         var claudeNestDir = GetClaudeNestDir();
-        var updatesDir = Path.Combine(claudeNestDir, "updates");
-        Directory.CreateDirectory(updatesDir);
+        var binDir = Path.Combine(claudeNestDir, "bin");
+        Directory.CreateDirectory(binDir);
 
         var isWindows = OperatingSystem.IsWindows();
-        var newBinaryName = isWindows ? "claudenest-agent.new.exe" : "claudenest-agent.new";
-        var newBinaryPath = Path.Combine(updatesDir, newBinaryName);
+        var isMacOS = OperatingSystem.IsMacOS();
+        var ext = isWindows ? ".exe" : "";
 
         // Determine the correct download URL based on RID
         var rid = GetCurrentRid();
         var filename = isWindows ? $"claudenest-agent-{rid}.exe" : $"claudenest-agent-{rid}";
         var fullUrl = downloadUrl.EndsWith('/') ? $"{downloadUrl}{filename}" : $"{downloadUrl}/{filename}";
 
-        // Download
-        _logger.LogInformation("Downloading update from {Url}", fullUrl);
+        // Download directly to versioned path
+        var versionedBinaryName = $"claudenest-agent-{newVersion}{ext}";
+        var versionedBinaryPath = Path.Combine(binDir, versionedBinaryName);
+
+        _logger.LogInformation("Downloading update from {Url} to {Path}", fullUrl, versionedBinaryPath);
         using var http = new HttpClient();
         using var response = await http.GetAsync(fullUrl, ct);
         response.EnsureSuccessStatusCode();
 
-        await using var fs = File.Create(newBinaryPath);
+        await using var fs = File.Create(versionedBinaryPath);
         await response.Content.CopyToAsync(fs, ct);
         await fs.FlushAsync(ct);
+        fs.Close();
 
         // Make executable on Unix
         if (!isWindows)
         {
-            File.SetUnixFileMode(newBinaryPath,
+            File.SetUnixFileMode(versionedBinaryPath,
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
                 UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
                 UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        }
+
+        // Remove quarantine on macOS
+        if (isMacOS)
+        {
+            RemoveQuarantine(versionedBinaryPath);
         }
 
         // Stop sessions gracefully
         _logger.LogInformation("Stopping active sessions before update");
         await stopSessionsAsync();
 
-        // Replace binary
-        var installedBinaryPath = Path.Combine(claudeNestDir, "bin",
-            isWindows ? "claudenest-agent.exe" : "claudenest-agent");
-
-        if (File.Exists(installedBinaryPath))
-        {
-            if (isWindows)
-            {
-                // On Windows, write a batch script to replace after exit
-                var scriptPath = Path.Combine(updatesDir, "update.bat");
-                var script = $"""
-                    @echo off
-                    timeout /t 2 /nobreak >nul
-                    copy /y "{newBinaryPath}" "{installedBinaryPath}"
-                    del "{scriptPath}"
-                    """;
-                File.WriteAllText(scriptPath, script);
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = "cmd.exe",
-                    Arguments = $"/c \"{scriptPath}\"",
-                    CreateNoWindow = true,
-                    UseShellExecute = false
-                });
-            }
-            else
-            {
-                // On Unix, we can replace the running binary via rename
-                File.Move(newBinaryPath, installedBinaryPath, overwrite: true);
-            }
-        }
+        // Switch to new binary: update config, service, symlink
+        await SwitchToNewBinaryAsync(versionedBinaryPath, newVersion);
 
         // Write update marker
         var markerPath = Path.Combine(claudeNestDir, "update-pending");
         await File.WriteAllTextAsync(markerPath, newVersion, ct);
 
         // Exit with non-zero code so service managers restart the process
-        // (launchd with SuccessfulExit=false won't restart on exit code 0)
         _logger.LogInformation("Update staged. Restarting agent...");
         Environment.Exit(42);
+    }
+
+    /// <summary>
+    /// Shared logic for switching to a new versioned binary. Updates config, service registration, and symlink/copy.
+    /// </summary>
+    public static async Task SwitchToNewBinaryAsync(string newVersionedPath, string? newVersion = null)
+    {
+        var isWindows = OperatingSystem.IsWindows();
+        var ext = isWindows ? ".exe" : "";
+        var binDir = Path.GetDirectoryName(newVersionedPath)!;
+        var convenienceName = $"claudenest-agent{ext}";
+        var conveniencePath = Path.Combine(binDir, convenienceName);
+
+        // Update config
+        var config = ConfigLoader.LoadConfig();
+        config.InstalledBinaryPath = newVersionedPath;
+        ConfigLoader.SaveConfig(config);
+
+        // Update service registration
+        using var loggerFactory = LoggerFactory.Create(_ => { });
+        var logger = loggerFactory.CreateLogger("ServiceInstaller");
+        var installer = ServiceInstallerFactory.Create(logger);
+
+        if (installer.IsInstalled())
+        {
+            await installer.UpdateBinPathAsync(newVersionedPath);
+        }
+
+        // Update symlink (Unix) or copy (Windows) for CLI convenience
+        if (isWindows)
+        {
+            try
+            {
+                File.Copy(newVersionedPath, conveniencePath, overwrite: true);
+            }
+            catch { /* best effort — file may be in use */ }
+        }
+        else
+        {
+            if (File.Exists(conveniencePath) || new FileInfo(conveniencePath).LinkTarget is not null)
+            {
+                File.Delete(conveniencePath);
+            }
+
+            File.CreateSymbolicLink(conveniencePath, Path.GetFileName(newVersionedPath));
+        }
+    }
+
+    private void CleanupOldBinaries(string currentVersion)
+    {
+        try
+        {
+            var binDir = Path.Combine(GetClaudeNestDir(), "bin");
+            if (!Directory.Exists(binDir)) return;
+
+            var isWindows = OperatingSystem.IsWindows();
+            var ext = isWindows ? ".exe" : "";
+            var currentName = $"claudenest-agent-{currentVersion}{ext}";
+
+            foreach (var file in Directory.GetFiles(binDir, $"claudenest-agent-*{ext}"))
+            {
+                var fileName = Path.GetFileName(file);
+                // Don't delete the current version or the convenience name
+                if (fileName == currentName || fileName == $"claudenest-agent{ext}")
+                    continue;
+
+                try
+                {
+                    File.Delete(file);
+                    _logger.LogInformation("Cleaned up old binary: {FileName}", fileName);
+                }
+                catch
+                {
+                    // Best effort — may be in use on Windows
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error during old binary cleanup");
+        }
+    }
+
+    private static void RemoveQuarantine(string path)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "xattr",
+                Arguments = $"-d com.apple.quarantine \"{path}\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            using var process = System.Diagnostics.Process.Start(psi);
+            process?.WaitForExit(5000);
+        }
+        catch
+        {
+            // Ignore — quarantine attribute may not exist
+        }
     }
 
     private static string GetClaudeNestDir()

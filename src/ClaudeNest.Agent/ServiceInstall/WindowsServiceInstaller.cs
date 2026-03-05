@@ -1,86 +1,56 @@
 using System.Diagnostics;
-using System.Security;
 
 namespace ClaudeNest.Agent.ServiceInstall;
 
 public sealed class WindowsServiceInstaller(ILogger logger) : IServiceInstaller
 {
-    private const string TaskName = "ClaudeNestAgent";
+    private const string ServiceName = "ClaudeNestAgent";
+    private const string LegacyTaskName = "ClaudeNestAgent";
 
-    public async Task<bool> InstallAsync(string binaryPath, CancellationToken ct = default)
+    public async Task<bool> InstallAsync(string binaryPath, ServiceInstallOptions? options = null, CancellationToken ct = default)
     {
         try
         {
+            // Clean up legacy scheduled task if present
+            await CleanupLegacyScheduledTask(ct);
+
             var username = $@"{Environment.UserDomainName}\{Environment.UserName}";
-            var xml = $"""
-                <?xml version="1.0" encoding="UTF-16"?>
-                <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-                  <RegistrationInfo>
-                    <Description>ClaudeNest Agent - Remote launcher for Claude Code sessions</Description>
-                  </RegistrationInfo>
-                  <Triggers>
-                    <LogonTrigger>
-                      <Enabled>true</Enabled>
-                      <UserId>{SecurityElement.Escape(username)}</UserId>
-                    </LogonTrigger>
-                  </Triggers>
-                  <Principals>
-                    <Principal>
-                      <UserId>{SecurityElement.Escape(username)}</UserId>
-                      <LogonType>InteractiveToken</LogonType>
-                      <RunLevel>LeastPrivilege</RunLevel>
-                    </Principal>
-                  </Principals>
-                  <Settings>
-                    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-                    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
-                    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
-                    <AllowStartOnDemand>true</AllowStartOnDemand>
-                    <Enabled>true</Enabled>
-                    <RestartOnFailure>
-                      <Interval>PT1M</Interval>
-                      <Count>999</Count>
-                    </RestartOnFailure>
-                    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
-                    <Hidden>true</Hidden>
-                  </Settings>
-                  <Actions>
-                    <Exec>
-                      <Command>{SecurityElement.Escape(binaryPath)}</Command>
-                      <Arguments>run --hidden</Arguments>
-                    </Exec>
-                  </Actions>
-                </Task>
-                """;
 
-            var tempFile = Path.Combine(Path.GetTempPath(), $"claudenest-task-{Guid.NewGuid():N}.xml");
-            try
-            {
-                await File.WriteAllTextAsync(tempFile, xml, System.Text.Encoding.Unicode, ct);
-                var result = await RunCommandAsync("schtasks",
-                    $"/create /tn \"{TaskName}\" /xml \"{tempFile}\" /f", ct);
+            // Create the Windows Service
+            var binPathArg = $"\"{binaryPath}\" run";
+            var createArgs = $"create {ServiceName} binPath= \"{binPathArg}\" start= auto";
 
-                if (!result)
-                {
-                    logger.LogError(
-                        "Failed to create scheduled task. On Windows, install must be run from an elevated (Administrator) terminal");
-                    return false;
-                }
-            }
-            finally
+            // Add user credentials if a service password is provided
+            if (!string.IsNullOrEmpty(options?.ServicePassword))
             {
-                try { File.Delete(tempFile); } catch { }
+                createArgs += $" obj= \"{username}\" password= \"{options.ServicePassword}\"";
             }
 
-            // Start the task immediately
-            await RunCommandAsync("schtasks", $"/run /tn \"{TaskName}\"", ct);
+            var createResult = await RunCommandAsync("sc.exe", createArgs, ct);
+            if (!createResult)
+            {
+                logger.LogError(
+                    "Failed to create Windows Service. Install must be run from an elevated (Administrator) terminal");
+                return false;
+            }
 
-            logger.LogInformation("Windows scheduled task installed with restart-on-failure and started");
+            // Set description
+            await RunCommandAsync("sc.exe",
+                $"description {ServiceName} \"ClaudeNest Agent - Remote launcher for Claude Code sessions\"", ct);
+
+            // Configure failure actions: restart after 60 seconds on first 3 failures
+            await RunCommandAsync("sc.exe",
+                $"failure {ServiceName} reset= 86400 actions= restart/60000/restart/60000/restart/60000", ct);
+
+            // Start the service
+            await RunCommandAsync("sc.exe", $"start {ServiceName}", ct);
+
+            logger.LogInformation("Windows Service installed and started");
             return true;
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to install Windows scheduled task");
+            logger.LogError(ex, "Failed to install Windows Service");
             return false;
         }
     }
@@ -89,15 +59,20 @@ public sealed class WindowsServiceInstaller(ILogger logger) : IServiceInstaller
     {
         try
         {
-            await RunCommandAsync("schtasks", $"/end /tn \"{TaskName}\"", ct);
-            await RunCommandAsync("schtasks", $"/delete /tn \"{TaskName}\" /f", ct);
+            // Stop and delete the Windows Service
+            await RunCommandAsync("sc.exe", $"stop {ServiceName}", ct);
+            await Task.Delay(2000, ct);
+            await RunCommandAsync("sc.exe", $"delete {ServiceName}", ct);
 
-            logger.LogInformation("Windows scheduled task uninstalled");
+            // Also clean up legacy scheduled task if present
+            await CleanupLegacyScheduledTask(ct);
+
+            logger.LogInformation("Windows Service uninstalled");
             return true;
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to uninstall Windows scheduled task");
+            logger.LogError(ex, "Failed to uninstall Windows Service");
             return false;
         }
     }
@@ -106,16 +81,38 @@ public sealed class WindowsServiceInstaller(ILogger logger) : IServiceInstaller
     {
         try
         {
-            await RunCommandAsync("schtasks", $"/end /tn \"{TaskName}\"", ct);
-            await Task.Delay(1000, ct);
-            await RunCommandAsync("schtasks", $"/run /tn \"{TaskName}\"", ct);
+            await RunCommandAsync("sc.exe", $"stop {ServiceName}", ct);
+            await Task.Delay(2000, ct);
+            await RunCommandAsync("sc.exe", $"start {ServiceName}", ct);
 
-            logger.LogInformation("Windows scheduled task restarted");
+            logger.LogInformation("Windows Service restarted");
             return true;
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to restart Windows scheduled task");
+            logger.LogError(ex, "Failed to restart Windows Service");
+            return false;
+        }
+    }
+
+    public async Task<bool> UpdateBinPathAsync(string newBinaryPath, CancellationToken ct = default)
+    {
+        try
+        {
+            var binPathArg = $"\"{newBinaryPath}\" run";
+            var result = await RunCommandAsync("sc.exe",
+                $"config {ServiceName} binPath= \"{binPathArg}\"", ct);
+
+            if (result)
+                logger.LogInformation("Windows Service binary path updated to {Path}", newBinaryPath);
+            else
+                logger.LogError("Failed to update Windows Service binary path");
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to update Windows Service binary path");
             return false;
         }
     }
@@ -126,8 +123,8 @@ public sealed class WindowsServiceInstaller(ILogger logger) : IServiceInstaller
         {
             var psi = new ProcessStartInfo
             {
-                FileName = "schtasks",
-                Arguments = $"/query /tn \"{TaskName}\"",
+                FileName = "sc.exe",
+                Arguments = $"query {ServiceName}",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -153,8 +150,8 @@ public sealed class WindowsServiceInstaller(ILogger logger) : IServiceInstaller
         {
             var psi = new ProcessStartInfo
             {
-                FileName = "schtasks",
-                Arguments = $"/query /tn \"{TaskName}\" /fo csv /nh",
+                FileName = "sc.exe",
+                Arguments = $"query {ServiceName}",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -164,11 +161,25 @@ public sealed class WindowsServiceInstaller(ILogger logger) : IServiceInstaller
             if (process is null) return false;
             var output = await process.StandardOutput.ReadToEndAsync(ct);
             await process.WaitForExitAsync(ct);
-            return process.ExitCode == 0 && output.Contains("Running", StringComparison.OrdinalIgnoreCase);
+            return process.ExitCode == 0 && output.Contains("RUNNING", StringComparison.OrdinalIgnoreCase);
         }
         catch
         {
             return false;
+        }
+    }
+
+    private async Task CleanupLegacyScheduledTask(CancellationToken ct)
+    {
+        try
+        {
+            await RunCommandAsync("schtasks", $"/end /tn \"{LegacyTaskName}\"", ct);
+            await RunCommandAsync("schtasks", $"/delete /tn \"{LegacyTaskName}\" /f", ct);
+            logger.LogInformation("Cleaned up legacy scheduled task");
+        }
+        catch
+        {
+            // Ignore — legacy task may not exist
         }
     }
 

@@ -85,55 +85,23 @@ if (args[0] != "run" && args[0] != "install")
 
 // Run the agent (works for both post-install and standalone 'run')
 
-// Hide the console window on Windows when launched by the scheduled task with --hidden.
-// The scheduled task uses InteractiveToken which creates a visible cmd window;
-// hiding it prevents the user from accidentally closing it and killing the agent.
-if (args.Contains("--hidden") && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-{
-    HideConsoleWindow();
-}
-
 var hostArgs = args[1..]; // strip subcommand so the host doesn't choke on it
 
 var builder = Host.CreateApplicationBuilder(hostArgs);
 
 builder.AddServiceDefaults();
 
+// Register as a Windows Service when running on Windows
+if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+{
+    builder.Services.AddWindowsService(o => o.ServiceName = "ClaudeNestAgent");
+}
+
 builder.Services.AddHostedService<AgentWorker>();
 
 var host = builder.Build();
 host.Run();
 return 0;
-
-static void HideConsoleWindow()
-{
-    const int SW_HIDE = 0;
-    var handle = WindowsConsoleNativeMethods.GetConsoleWindow();
-    if (handle != IntPtr.Zero)
-    {
-        WindowsConsoleNativeMethods.ShowWindow(handle, SW_HIDE);
-    }
-}
-
-static void KillOtherAgentProcesses()
-{
-    try
-    {
-        var currentPid = Environment.ProcessId;
-        foreach (var proc in Process.GetProcessesByName("claudenest-agent"))
-        {
-            if (proc.Id != currentPid)
-            {
-                proc.Kill(entireProcessTree: true);
-                proc.WaitForExit(5000);
-            }
-            proc.Dispose();
-        }
-    }
-    catch { /* best effort */ }
-
-    Thread.Sleep(1000);
-}
 
 static async Task<bool> ValidateAgentCredentialsAsync(AgentCredentials credentials)
 {
@@ -305,6 +273,7 @@ static async Task<int> HandleInstallAsync(string[] args)
     string? token = null;
     string? backendUrl = null;
     string? agentName = null;
+    string? servicePassword = null;
     List<string> paths = [];
 
     for (var i = 1; i < args.Length; i++)
@@ -319,6 +288,9 @@ static async Task<int> HandleInstallAsync(string[] args)
                 break;
             case "--name" when i + 1 < args.Length:
                 agentName = args[++i];
+                break;
+            case "--service-password" when i + 1 < args.Length:
+                servicePassword = args[++i];
                 break;
             case "--path" when i + 1 < args.Length:
                 paths.Add(Path.GetFullPath(args[++i]));
@@ -344,7 +316,7 @@ static async Task<int> HandleInstallAsync(string[] args)
             if (!checkInstaller.IsInstalled())
             {
                 Console.WriteLine("Agent is paired but the background service is not installed. Re-registering service...");
-                return await InstallBinaryAndService(existingCredentials!, existingConfig.Name ?? Environment.MachineName, existingConfig.AllowedPaths);
+                return await InstallBinaryAndService(existingCredentials!, existingConfig.Name ?? Environment.MachineName, existingConfig.AllowedPaths, servicePassword);
             }
 
             Console.WriteLine("An agent is already installed on this machine.");
@@ -366,7 +338,7 @@ static async Task<int> HandleInstallAsync(string[] args)
     // New install — require token and backend
     if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(backendUrl))
     {
-        Console.Error.WriteLine("Usage: claudenest-agent install --token <TOKEN> --backend <URL> [--name <NAME>] [--path <PATH> ...]");
+        Console.Error.WriteLine("Usage: claudenest-agent install --token <TOKEN> --backend <URL> [--name <NAME>] [--path <PATH> ...] [--service-password <PASSWORD>]");
         return 1;
     }
 
@@ -455,7 +427,7 @@ static async Task<int> HandleInstallAsync(string[] args)
     };
     ConfigLoader.SaveCredentials(credentials);
 
-    return await InstallBinaryAndService(credentials, agentName, paths);
+    return await InstallBinaryAndService(credentials, agentName, paths, servicePassword);
 }
 
 static async Task<int> HandleAddPathsAsync(AgentCredentials credentials, NestConfig existingConfig, List<string> newPaths)
@@ -520,34 +492,47 @@ static async Task<int> HandleAddPathsAsync(AgentCredentials credentials, NestCon
         var installer = ServiceInstallerFactory.Create(serviceLogger);
         if (installer.IsInstalled())
         {
-            await installer.UninstallAsync();
-
-            // Kill lingering agent processes on Windows so binary isn't file-locked
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                KillOtherAgentProcesses();
-            }
-
-            var binaryPath = existingConfig.InstalledBinaryPath
-                ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest", "bin",
-                    RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "claudenest-agent.exe" : "claudenest-agent");
-
-            // Update binary if running from a different location
+            var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
             var currentBinaryPath = Environment.ProcessPath;
-            if (currentBinaryPath is not null && currentBinaryPath != binaryPath && File.Exists(currentBinaryPath))
+            var binaryPath = existingConfig.InstalledBinaryPath;
+
+            // If running from a different (newer) binary, install it with versioned naming
+            if (currentBinaryPath is not null && binaryPath is not null && currentBinaryPath != binaryPath)
             {
-                Console.WriteLine($"Updating agent binary at {binaryPath}...");
-                File.Copy(currentBinaryPath, binaryPath, overwrite: true);
-                if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                var version = typeof(AgentWorker).Assembly.GetName().Version?.ToString() ?? "0.0.0";
+                var ext = isWindows ? ".exe" : "";
+                var binDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest", "bin");
+                var newVersionedPath = Path.Combine(binDir, $"claudenest-agent-{version}{ext}");
+
+                Console.WriteLine($"Updating agent binary to {newVersionedPath}...");
+                File.Copy(currentBinaryPath, newVersionedPath, overwrite: true);
+                if (!isWindows)
                 {
-                    File.SetUnixFileMode(binaryPath,
+                    File.SetUnixFileMode(newVersionedPath,
                         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
                         UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
                         UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
                 }
+
+                existingConfig.InstalledBinaryPath = newVersionedPath;
+                ConfigLoader.SaveConfig(existingConfig);
+                await installer.UpdateBinPathAsync(newVersionedPath);
+
+                // Update symlink/copy
+                var conveniencePath = Path.Combine(binDir, $"claudenest-agent{ext}");
+                if (isWindows)
+                {
+                    File.Copy(newVersionedPath, conveniencePath, overwrite: true);
+                }
+                else
+                {
+                    if (File.Exists(conveniencePath) || new FileInfo(conveniencePath).LinkTarget is not null)
+                        File.Delete(conveniencePath);
+                    File.CreateSymbolicLink(conveniencePath, $"claudenest-agent-{version}{ext}");
+                }
             }
 
-            await installer.InstallAsync(binaryPath);
+            await installer.RestartAsync();
             Console.WriteLine("Agent restarted. New paths are now active.");
         }
         else
@@ -654,44 +639,56 @@ static async Task<int> ValidateAndTrustPaths(List<string> paths, string backendU
     return 0;
 }
 
-static async Task<int> InstallBinaryAndService(AgentCredentials credentials, string agentName, List<string> paths)
+static async Task<int> InstallBinaryAndService(AgentCredentials credentials, string agentName, List<string> paths, string? servicePassword = null)
 {
-    // Copy binary to ~/.claudenest/bin/
+    // Copy binary to ~/.claudenest/bin/ with versioned naming
     var claudeNestDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest");
     var binDir = Path.Combine(claudeNestDir, "bin");
     Directory.CreateDirectory(binDir);
 
     var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-    var binaryName = isWindows ? "claudenest-agent.exe" : "claudenest-agent";
-    var installedBinaryPath = Path.Combine(binDir, binaryName);
+    var version = typeof(AgentWorker).Assembly.GetName().Version?.ToString() ?? "0.0.0";
+    var ext = isWindows ? ".exe" : "";
+    var versionedBinaryName = $"claudenest-agent-{version}{ext}";
+    var convenienceName = $"claudenest-agent{ext}";
+    var versionedBinaryPath = Path.Combine(binDir, versionedBinaryName);
+    var conveniencePath = Path.Combine(binDir, convenienceName);
     var currentBinaryPath = Environment.ProcessPath;
 
-    if (currentBinaryPath is not null && currentBinaryPath != installedBinaryPath)
+    if (currentBinaryPath is not null && currentBinaryPath != versionedBinaryPath)
     {
-        // Kill lingering agent processes on Windows so binary isn't file-locked
-        if (isWindows)
-        {
-            KillOtherAgentProcesses();
-        }
-
-        Console.WriteLine($"Copying agent binary to {installedBinaryPath}...");
-        File.Copy(currentBinaryPath, installedBinaryPath, overwrite: true);
+        Console.WriteLine($"Copying agent binary to {versionedBinaryPath}...");
+        File.Copy(currentBinaryPath, versionedBinaryPath, overwrite: true);
 
         // Make executable on Unix
         if (!isWindows)
         {
-            File.SetUnixFileMode(installedBinaryPath,
+            File.SetUnixFileMode(versionedBinaryPath,
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
                 UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
                 UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
         }
     }
 
+    // Create symlink (Unix) or copy (Windows) for CLI convenience
+    if (isWindows)
+    {
+        File.Copy(versionedBinaryPath, conveniencePath, overwrite: true);
+    }
+    else
+    {
+        if (File.Exists(conveniencePath) || new FileInfo(conveniencePath).LinkTarget is not null)
+        {
+            File.Delete(conveniencePath);
+        }
+        File.CreateSymbolicLink(conveniencePath, versionedBinaryName);
+    }
+
     // Add ~/.claudenest/bin to PATH
     EnsureBinOnPath(binDir);
 
     // Determine service type
-    var serviceType = isWindows ? "windows-task" :
+    var serviceType = isWindows ? "windows-service" :
         RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "macos-launchagent" :
         "linux-systemd";
 
@@ -700,7 +697,7 @@ static async Task<int> InstallBinaryAndService(AgentCredentials credentials, str
     {
         Name = agentName,
         AllowedPaths = paths,
-        InstalledBinaryPath = installedBinaryPath,
+        InstalledBinaryPath = versionedBinaryPath,
         ServiceType = serviceType
     };
     ConfigLoader.SaveConfig(nestConfig);
@@ -710,17 +707,21 @@ static async Task<int> InstallBinaryAndService(AgentCredentials credentials, str
     using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
     var serviceLogger = loggerFactory.CreateLogger("ServiceInstaller");
 
+    var options = servicePassword is not null
+        ? new ServiceInstallOptions { ServicePassword = servicePassword }
+        : null;
+
     try
     {
         var installer = ServiceInstallerFactory.Create(serviceLogger);
-        var installResult = await installer.InstallAsync(installedBinaryPath);
+        var installResult = await installer.InstallAsync(versionedBinaryPath, options);
         if (installResult)
         {
             Console.WriteLine();
             Console.WriteLine($"Agent paired and installed successfully!");
             Console.WriteLine($"  Agent ID:    {credentials.AgentId}");
             Console.WriteLine($"  Name:        {agentName}");
-            Console.WriteLine($"  Binary:      {installedBinaryPath}");
+            Console.WriteLine($"  Binary:      {versionedBinaryPath}");
             Console.WriteLine($"  Service:     {serviceType}");
             Console.WriteLine($"  Paths:       {string.Join(", ", paths)}");
             Console.WriteLine($"  Config:      {claudeNestDir}/");
@@ -897,11 +898,7 @@ static async Task<int> HandleRemovePathCommand(string[] args)
         var installer = ServiceInstallerFactory.Create(serviceLogger);
         if (installer.IsInstalled())
         {
-            await installer.UninstallAsync();
-            var binaryPath = config.InstalledBinaryPath
-                ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest", "bin",
-                    RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "claudenest-agent.exe" : "claudenest-agent");
-            await installer.InstallAsync(binaryPath);
+            await installer.RestartAsync();
             Console.WriteLine("Agent restarted.");
         }
     }
@@ -1047,10 +1044,6 @@ static async Task<int> HandleUpdateAsync()
     }
 
     var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-    var binaryName = isWindows ? "claudenest-agent.exe" : "claudenest-agent";
-    var binaryPath = config.InstalledBinaryPath
-        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest", "bin", binaryName);
-
     var currentBinaryPath = Environment.ProcessPath;
     if (currentBinaryPath is null)
     {
@@ -1058,71 +1051,85 @@ static async Task<int> HandleUpdateAsync()
         return 1;
     }
 
-    // Stop the service BEFORE copying the binary (on Windows the running exe is file-locked)
-    using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
-    var serviceLogger = loggerFactory.CreateLogger("ServiceInstaller");
-    var installer = ServiceInstallerFactory.Create(serviceLogger);
-    var wasInstalled = installer.IsInstalled();
+    // Determine new versioned path
+    var version = typeof(AgentWorker).Assembly.GetName().Version?.ToString() ?? "0.0.0";
+    var ext = isWindows ? ".exe" : "";
+    var claudeNestDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest");
+    var binDir = Path.Combine(claudeNestDir, "bin");
+    Directory.CreateDirectory(binDir);
 
-    if (wasInstalled)
+    var versionedBinaryName = $"claudenest-agent-{version}{ext}";
+    var versionedBinaryPath = Path.Combine(binDir, versionedBinaryName);
+    var convenienceName = $"claudenest-agent{ext}";
+    var conveniencePath = Path.Combine(binDir, convenienceName);
+
+    // Copy current binary to new versioned path (no need to stop service — writing to a new file)
+    if (currentBinaryPath != versionedBinaryPath)
     {
-        Console.WriteLine("Stopping agent service...");
-        await installer.UninstallAsync();
-
-        // Kill any lingering agent processes on Windows
-        if (isWindows)
-        {
-            try
-            {
-                var currentPid = Environment.ProcessId;
-                foreach (var proc in Process.GetProcessesByName("claudenest-agent"))
-                {
-                    if (proc.Id != currentPid)
-                    {
-                        proc.Kill(entireProcessTree: true);
-                        proc.WaitForExit(5000);
-                    }
-                    proc.Dispose();
-                }
-            }
-            catch { /* best effort */ }
-
-            await Task.Delay(1000);
-        }
-    }
-
-    // Copy current binary to installed location
-    if (currentBinaryPath != binaryPath)
-    {
-        Console.WriteLine($"Updating agent binary at {binaryPath}...");
-        var binDir = Path.GetDirectoryName(binaryPath)!;
-        Directory.CreateDirectory(binDir);
-        File.Copy(currentBinaryPath, binaryPath, overwrite: true);
+        Console.WriteLine($"Installing agent binary to {versionedBinaryPath}...");
+        File.Copy(currentBinaryPath, versionedBinaryPath, overwrite: true);
         if (!isWindows)
         {
-            File.SetUnixFileMode(binaryPath,
+            File.SetUnixFileMode(versionedBinaryPath,
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
                 UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
                 UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
         }
-        Console.WriteLine("Binary updated.");
+        Console.WriteLine("Binary installed.");
     }
     else
     {
-        Console.WriteLine("Already running from the installed location. No binary update needed.");
+        Console.WriteLine("Already running from the versioned location. No binary copy needed.");
     }
 
-    // Re-register and start the service
-    if (wasInstalled)
+    // Update config
+    var oldBinaryPath = config.InstalledBinaryPath;
+    config.InstalledBinaryPath = versionedBinaryPath;
+    ConfigLoader.SaveConfig(config);
+
+    // Update service registration to point to new binary
+    using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+    var serviceLogger = loggerFactory.CreateLogger("ServiceInstaller");
+    var installer = ServiceInstallerFactory.Create(serviceLogger);
+
+    if (installer.IsInstalled())
     {
-        Console.WriteLine("Starting agent service...");
-        await installer.InstallAsync(binaryPath);
+        Console.WriteLine("Updating service binary path...");
+        await installer.UpdateBinPathAsync(versionedBinaryPath);
+
+        Console.WriteLine("Restarting agent service...");
+        await installer.RestartAsync();
         Console.WriteLine("Agent updated and restarted successfully.");
     }
     else
     {
         Console.WriteLine("No background service found. Binary updated but service not restarted.");
         Console.WriteLine("Run 'claudenest-agent install' to set up the service.");
+    }
+
+    // Update symlink/copy for CLI convenience
+    if (isWindows)
+    {
+        File.Copy(versionedBinaryPath, conveniencePath, overwrite: true);
+    }
+    else
+    {
+        if (File.Exists(conveniencePath) || new FileInfo(conveniencePath).LinkTarget is not null)
+        {
+            File.Delete(conveniencePath);
+        }
+        File.CreateSymbolicLink(conveniencePath, versionedBinaryName);
+    }
+
+    // Clean up old versioned binary if different
+    if (oldBinaryPath is not null && oldBinaryPath != versionedBinaryPath && File.Exists(oldBinaryPath))
+    {
+        try
+        {
+            File.Delete(oldBinaryPath);
+            Console.WriteLine($"Cleaned up old binary: {Path.GetFileName(oldBinaryPath)}");
+        }
+        catch { /* best effort — may be in use on Windows */ }
     }
 
     return 0;

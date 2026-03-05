@@ -14,7 +14,7 @@ public sealed class MacOsServiceInstaller(ILogger logger) : IServiceInstaller
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         ".claudenest", "logs");
 
-    public async Task<bool> InstallAsync(string binaryPath, CancellationToken ct = default)
+    public async Task<bool> InstallAsync(string binaryPath, ServiceInstallOptions? options = null, CancellationToken ct = default)
     {
         try
         {
@@ -103,6 +103,32 @@ public sealed class MacOsServiceInstaller(ILogger logger) : IServiceInstaller
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to restart macOS LaunchAgent");
+            return false;
+        }
+    }
+
+    public async Task<bool> UpdateBinPathAsync(string newBinaryPath, CancellationToken ct = default)
+    {
+        try
+        {
+            if (!File.Exists(PlistPath))
+            {
+                logger.LogWarning("Cannot update binary path — plist does not exist");
+                return false;
+            }
+
+            // Unload, rewrite plist with new path, reload
+            await RunCommandAsync("launchctl", $"unload \"{PlistPath}\"", ct);
+
+            // Re-install with new binary path (rewrites the plist)
+            await InstallAsync(newBinaryPath, ct: ct);
+
+            logger.LogInformation("macOS LaunchAgent binary path updated to {Path}", newBinaryPath);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to update macOS LaunchAgent binary path");
             return false;
         }
     }
