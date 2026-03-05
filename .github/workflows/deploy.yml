@@ -10,6 +10,7 @@ on:
       - "src/ClaudeNest.Shared/**"
       - "src/ClaudeNest.ServiceDefaults/**"
       - "src/claudenest-web/**"
+      - "scripts/**"
 
 permissions:
   id-token: write
