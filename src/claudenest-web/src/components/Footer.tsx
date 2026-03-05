@@ -30,7 +30,7 @@ export function Footer() {
             Star on GitHub
           </a>
           <a
-            href={`${GITHUB_URL}/issues`}
+            href={`${GITHUB_URL}/issues/new?template=bug_report.yml`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 hover:text-gray-700 dark:hover:text-gray-200"
