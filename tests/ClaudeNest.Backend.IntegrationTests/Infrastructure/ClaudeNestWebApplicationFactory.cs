@@ -119,42 +119,48 @@ public class ClaudeNestWebApplicationFactory : WebApplicationFactory<Program>, I
         await _msSqlContainer.DisposeAsync();
     }
 
+    private static readonly object ScriptCopyLock = new();
+    private static bool _scriptsCopied;
+
     private static void EnsureScriptsAvailable()
     {
-        // WebApplicationFactory uses the Backend's source dir as ContentRootPath.
-        // InstallScriptController looks at Path.Combine(ContentRootPath, "scripts", filename).
-        // The actual scripts live at the repo root's scripts/ dir.
-        // We copy them to the Backend source dir.
+        if (_scriptsCopied) return;
 
-        // Find repo root by walking up from the current directory
-        var dir = AppContext.BaseDirectory;
-        string? repoRoot = null;
-        while (dir is not null)
+        lock (ScriptCopyLock)
         {
-            if (File.Exists(Path.Combine(dir, "ClaudeNest.slnx")) ||
-                File.Exists(Path.Combine(dir, "CLAUDE.md")))
+            if (_scriptsCopied) return;
+
+            var dir = AppContext.BaseDirectory;
+            string? repoRoot = null;
+            while (dir is not null)
             {
-                repoRoot = dir;
-                break;
+                if (File.Exists(Path.Combine(dir, "ClaudeNest.slnx")) ||
+                    File.Exists(Path.Combine(dir, "CLAUDE.md")))
+                {
+                    repoRoot = dir;
+                    break;
+                }
+                dir = Directory.GetParent(dir)?.FullName;
             }
-            dir = Directory.GetParent(dir)?.FullName;
-        }
 
-        if (repoRoot is null) return;
+            if (repoRoot is null) return;
 
-        var backendSrcDir = Path.Combine(repoRoot, "src", "ClaudeNest.Backend");
-        if (!Directory.Exists(backendSrcDir)) return;
+            var backendSrcDir = Path.Combine(repoRoot, "src", "ClaudeNest.Backend");
+            if (!Directory.Exists(backendSrcDir)) return;
 
-        var targetScriptsDir = Path.Combine(backendSrcDir, "scripts");
-        Directory.CreateDirectory(targetScriptsDir);
+            var targetScriptsDir = Path.Combine(backendSrcDir, "scripts");
+            Directory.CreateDirectory(targetScriptsDir);
 
-        var sourceScriptsDir = Path.Combine(repoRoot, "scripts");
-        foreach (var file in new[] { "install.sh", "install.ps1" })
-        {
-            var src = Path.Combine(sourceScriptsDir, file);
-            var dst = Path.Combine(targetScriptsDir, file);
-            if (File.Exists(src))
-                File.Copy(src, dst, overwrite: true);
+            var sourceScriptsDir = Path.Combine(repoRoot, "scripts");
+            foreach (var file in new[] { "install.sh", "install.ps1" })
+            {
+                var src = Path.Combine(sourceScriptsDir, file);
+                var dst = Path.Combine(targetScriptsDir, file);
+                if (File.Exists(src))
+                    File.Copy(src, dst, overwrite: true);
+            }
+
+            _scriptsCopied = true;
         }
     }
 }
