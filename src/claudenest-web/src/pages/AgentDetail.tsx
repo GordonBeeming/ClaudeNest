@@ -518,6 +518,7 @@ export function AgentDetail() {
                     favoritePaths={favoritePaths}
                     activeSessionPaths={activeSessionPaths}
                     atSessionLimit={atSessionLimit}
+                    isOnline={agent.isOnline}
                     onLaunch={handleLaunchSession}
                     preferences={preferences}
                     onToggleFavorite={handleToggleFavorite}
@@ -548,6 +549,7 @@ export function AgentDetail() {
                     allowedPaths={agent.allowedPaths}
                     activeSessionPaths={activeSessionPaths}
                     atSessionLimit={atSessionLimit}
+                    isOnline={agent.isOnline}
                     onLaunch={handleLaunchSession}
                     preferences={preferences}
                     onToggleFavorite={handleToggleFavorite}
