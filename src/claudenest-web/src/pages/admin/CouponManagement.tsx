@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { Tag, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Tag, Plus, RefreshCw, Trash2, Star } from "lucide-react";
 import { clsx } from "clsx";
 import { format } from "date-fns";
-import { getAdminCoupons, createAdminCoupon, deleteAdminCoupon, getPlans } from "../../api";
+import { getAdminCoupons, createAdminCoupon, deleteAdminCoupon, setDefaultCoupon, getPlans } from "../../api";
 import type { CouponInfo, PlanInfo, DiscountType } from "../../types";
 import { formatDiscountDescription } from "../../types";
 import { PlanPicker } from "../../components/PlanPicker";
@@ -89,6 +89,29 @@ export function CouponManagement() {
       setSuccess(`Coupon "${coupon.code}" deactivated`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to deactivate coupon");
+    }
+  }
+
+  async function handleToggleDefault(coupon: CouponInfo) {
+    const newDefault = !coupon.isDefaultForPlan;
+    try {
+      setError(null);
+      await setDefaultCoupon(coupon.id, newDefault);
+      setCoupons((prev) =>
+        prev.map((c) => {
+          if (c.planId === coupon.planId) {
+            return { ...c, isDefaultForPlan: c.id === coupon.id ? newDefault : false };
+          }
+          return c;
+        })
+      );
+      setSuccess(
+        newDefault
+          ? `"${coupon.code}" set as default for ${coupon.planName} — it will auto-apply when users select this plan`
+          : `Removed "${coupon.code}" as default for ${coupon.planName}`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update default coupon");
     }
   }
 
@@ -362,15 +385,32 @@ export function CouponManagement() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {coupon.isActive && (
-                        <button
-                          onClick={() => handleDeactivate(coupon)}
-                          className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                          Deactivate
-                        </button>
-                      )}
+                      <div className="flex items-center justify-end gap-1">
+                        {coupon.isActive && (
+                          <button
+                            onClick={() => handleToggleDefault(coupon)}
+                            className={clsx(
+                              "inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors",
+                              coupon.isDefaultForPlan
+                                ? "text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20"
+                                : "text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800"
+                            )}
+                            title={coupon.isDefaultForPlan ? "Remove as auto-apply default" : "Set as auto-apply default for this plan"}
+                          >
+                            <Star className={clsx("h-3 w-3", coupon.isDefaultForPlan && "fill-current")} />
+                            {coupon.isDefaultForPlan ? "Default" : "Set default"}
+                          </button>
+                        )}
+                        {coupon.isActive && (
+                          <button
+                            onClick={() => handleDeactivate(coupon)}
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            Deactivate
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -188,7 +188,8 @@ public class AccountController(NestDbContext db, IStripeService stripeService, T
             }
             else if (plan.DefaultCoupon is not null &&
                      plan.DefaultCoupon.IsActive &&
-                     plan.DefaultCoupon.TimesRedeemed < plan.DefaultCoupon.MaxRedemptions)
+                     plan.DefaultCoupon.TimesRedeemed < plan.DefaultCoupon.MaxRedemptions &&
+                     (plan.DefaultCoupon.ExpiresAt == null || plan.DefaultCoupon.ExpiresAt > timeProvider.GetUtcNow()))
             {
                 // Auto-apply plan's default coupon
                 var alreadyRedeemed = await db.CouponRedemptions

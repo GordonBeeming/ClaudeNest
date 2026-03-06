@@ -27,13 +27,15 @@ src/
 
 ```bash
 # Start everything via Aspire (requires Docker for SQL Server)
-dotnet run --project src/ClaudeNest.AppHost
+aspire run
 ```
 
 The Aspire dashboard will be available and orchestrates:
 - SQL Server container (for the `nestdb` database)
 - ClaudeNest.Backend (API + SignalR hub)
 - ClaudeNest.Agent (connects to backend)
+
+See `docs/local-development.md` for detailed setup (ProdLike profile, Auth0, Stripe, database access).
 
 ## Build & Test
 
@@ -350,6 +352,24 @@ Program.cs       # Entry point and DI setup
 - Credentials stored with DPAPI encryption via `CredentialProtector`
 
 ---
+
+## Testing
+
+- **All new backend API code must have integration tests** that capture the behavior of the endpoints
+- Tests live in `tests/ClaudeNest.Backend.IntegrationTests/Controllers/` — one test class per controller, matching the pattern `{ControllerName}Tests.cs`
+- Test infrastructure is in `tests/ClaudeNest.Backend.IntegrationTests/Infrastructure/`:
+  - `ClaudeNestWebApplicationFactory` — `WebApplicationFactory` with Testcontainers SQL Server, fake Stripe, and test auth
+  - `TestDatabaseHelper` — seed methods for all entities (`SeedUserAsync`, `SeedCouponAsync`, `SeedAgentAsync`, etc.)
+  - `TestUsers` — predefined test user identities
+  - `FakeStripeService` — records calls for assertion
+  - `TestAuthHandler` — header-based auth for tests
+- Each test class uses `IClassFixture<ClaudeNestWebApplicationFactory>` with primary constructor injection
+- Each test uses a **unique `TestUser`** (unique Auth0 ID) to avoid cross-test interference — do not reuse `TestUsers.UserA` etc. across tests in the same class
+- Test naming convention: `MethodName_ExpectedBehavior` or `MethodName_ExpectedBehavior_WhenCondition`
+- Use `TestDatabaseHelper.Seed*Async()` to set up test data — add new seed methods when new entity types need seeding
+- Assert HTTP status codes and response body properties via `JsonElement`
+- Clean up shared state (like plan defaults) at the end of tests that modify shared seed data
+- Run tests with: `dotnet test` from the repo root
 
 ## Development Guidelines
 

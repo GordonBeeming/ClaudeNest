@@ -17,7 +17,7 @@ ClaudeNest supports two local profiles, controlled by the environment passed to 
 ### Development (default)
 
 ```bash
-dotnet run --project src/ClaudeNest.AppHost
+aspire run
 ```
 
 This is the fastest way to get running. It requires no external accounts or API keys.
@@ -33,7 +33,7 @@ This is the fastest way to get running. It requires no external accounts or API 
 ### ProdLike
 
 ```bash
-dotnet run --project src/ClaudeNest.AppHost -- --environment ProdLike
+aspire run --environment ProdLike
 ```
 
 This profile enables the real auth and payment stack for integration testing.
@@ -159,7 +159,7 @@ Use these card numbers in the Stripe checkout UI during testing. Any future expi
 
 ### SQL Server via Aspire
 
-SQL Server runs in Docker, managed by Aspire. It starts automatically with `dotnet run --project src/ClaudeNest.AppHost`.
+SQL Server runs in Docker, managed by Aspire. It starts automatically with `aspire run`.
 
 - **Port**: `1533`
 - **Connection string**: `Server=127.0.0.1,1533;User ID=sa;Password=DevPass123!;TrustServerCertificate=true;Initial Catalog=nestdb`

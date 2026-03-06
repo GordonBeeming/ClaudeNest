@@ -187,4 +187,134 @@ public class AdminCouponsControllerTests(ClaudeNestWebApplicationFactory factory
 
         Assert.Contains(factory.FakeStripe.Calls, c => c.Contains("DeactivateStripeCoupon:stripe_coupon_test"));
     }
+
+    [Fact]
+    public async Task ListCoupons_IncludesIsDefaultForPlan()
+    {
+        var admin = new TestUser("auth0|ac-list-default", "ac-list-default@test.com", "AC ListDefault");
+        var (adminSeeded, _) = await TestDatabaseHelper.SeedUserAsync(factory.Services, admin, isAdmin: true);
+        var coupon = await TestDatabaseHelper.SeedCouponAsync(factory.Services, adminSeeded.Id,
+            ClaudeNestWebApplicationFactory.FalconPlanId, code: "AC-LIST-DEFAULT");
+
+        await TestDatabaseHelper.SetPlanDefaultCouponAsync(factory.Services,
+            ClaudeNestWebApplicationFactory.FalconPlanId, coupon.Id);
+
+        try
+        {
+            var client = factory.CreateAuthenticatedClient(admin);
+            var response = await client.GetAsync("/api/admin/coupons");
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var coupons = await response.Content.ReadFromJsonAsync<JsonElement>();
+            var defaultCoupon = coupons.EnumerateArray()
+                .First(c => c.GetProperty("code").GetString() == "AC-LIST-DEFAULT");
+            Assert.True(defaultCoupon.GetProperty("isDefaultForPlan").GetBoolean());
+        }
+        finally
+        {
+            await TestDatabaseHelper.SetPlanDefaultCouponAsync(factory.Services,
+                ClaudeNestWebApplicationFactory.FalconPlanId, null);
+        }
+    }
+
+    [Fact]
+    public async Task SetDefaultCoupon_SetsDefault()
+    {
+        var admin = new TestUser("auth0|ac-set-def", "ac-set-def@test.com", "AC SetDef");
+        var (adminSeeded, _) = await TestDatabaseHelper.SeedUserAsync(factory.Services, admin, isAdmin: true);
+        var coupon = await TestDatabaseHelper.SeedCouponAsync(factory.Services, adminSeeded.Id,
+            ClaudeNestWebApplicationFactory.FalconPlanId, code: "AC-SET-DEF");
+
+        var client = factory.CreateAuthenticatedClient(admin);
+
+        var response = await client.PostAsJsonAsync($"/api/admin/coupons/{coupon.Id}/set-default",
+            new { IsDefault = true });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(body.GetProperty("isDefaultForPlan").GetBoolean());
+
+        // Verify in database
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
+        var plan = await db.Plans.FirstAsync(p => p.Id == ClaudeNestWebApplicationFactory.FalconPlanId);
+        Assert.Equal(coupon.Id, plan.DefaultCouponId);
+
+        // Clean up
+        await TestDatabaseHelper.SetPlanDefaultCouponAsync(factory.Services,
+            ClaudeNestWebApplicationFactory.FalconPlanId, null);
+    }
+
+    [Fact]
+    public async Task SetDefaultCoupon_RemovesDefault()
+    {
+        var admin = new TestUser("auth0|ac-rm-def", "ac-rm-def@test.com", "AC RmDef");
+        var (adminSeeded, _) = await TestDatabaseHelper.SeedUserAsync(factory.Services, admin, isAdmin: true);
+        var coupon = await TestDatabaseHelper.SeedCouponAsync(factory.Services, adminSeeded.Id,
+            ClaudeNestWebApplicationFactory.FalconPlanId, code: "AC-RM-DEF");
+
+        await TestDatabaseHelper.SetPlanDefaultCouponAsync(factory.Services,
+            ClaudeNestWebApplicationFactory.FalconPlanId, coupon.Id);
+
+        var client = factory.CreateAuthenticatedClient(admin);
+
+        var response = await client.PostAsJsonAsync($"/api/admin/coupons/{coupon.Id}/set-default",
+            new { IsDefault = false });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(body.GetProperty("isDefaultForPlan").GetBoolean());
+
+        // Verify in database
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
+        var plan = await db.Plans.FirstAsync(p => p.Id == ClaudeNestWebApplicationFactory.FalconPlanId);
+        Assert.Null(plan.DefaultCouponId);
+    }
+
+    [Fact]
+    public async Task SetDefaultCoupon_ReplacesExistingDefault()
+    {
+        var admin = new TestUser("auth0|ac-replace-def", "ac-replace-def@test.com", "AC ReplaceDef");
+        var (adminSeeded, _) = await TestDatabaseHelper.SeedUserAsync(factory.Services, admin, isAdmin: true);
+        var coupon1 = await TestDatabaseHelper.SeedCouponAsync(factory.Services, adminSeeded.Id,
+            ClaudeNestWebApplicationFactory.FalconPlanId, code: "AC-REPLACE1");
+        var coupon2 = await TestDatabaseHelper.SeedCouponAsync(factory.Services, adminSeeded.Id,
+            ClaudeNestWebApplicationFactory.FalconPlanId, code: "AC-REPLACE2");
+
+        // Set coupon1 as default
+        await TestDatabaseHelper.SetPlanDefaultCouponAsync(factory.Services,
+            ClaudeNestWebApplicationFactory.FalconPlanId, coupon1.Id);
+
+        var client = factory.CreateAuthenticatedClient(admin);
+
+        // Set coupon2 as default — should replace coupon1
+        var response = await client.PostAsJsonAsync($"/api/admin/coupons/{coupon2.Id}/set-default",
+            new { IsDefault = true });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
+        var plan = await db.Plans.FirstAsync(p => p.Id == ClaudeNestWebApplicationFactory.FalconPlanId);
+        Assert.Equal(coupon2.Id, plan.DefaultCouponId);
+
+        // Clean up
+        await TestDatabaseHelper.SetPlanDefaultCouponAsync(factory.Services,
+            ClaudeNestWebApplicationFactory.FalconPlanId, null);
+    }
+
+    [Fact]
+    public async Task SetDefaultCoupon_Returns404_ForUnknownCoupon()
+    {
+        var admin = new TestUser("auth0|ac-def-404", "ac-def-404@test.com", "AC Def404");
+        await TestDatabaseHelper.SeedUserAsync(factory.Services, admin, isAdmin: true);
+
+        var client = factory.CreateAuthenticatedClient(admin);
+
+        var response = await client.PostAsJsonAsync($"/api/admin/coupons/{Guid.NewGuid()}/set-default",
+            new { IsDefault = true });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
 }

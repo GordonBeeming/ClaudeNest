@@ -39,7 +39,8 @@ public class AdminCouponsController(NestDbContext db, IStripeService stripeServi
                 c.ExpiresAt,
                 c.StripeCouponId,
                 c.IsActive,
-                c.CreatedAt
+                c.CreatedAt,
+                IsDefaultForPlan = c.Plan.DefaultCouponId == c.Id
             })
             .ToListAsync();
 
@@ -217,5 +218,32 @@ public class AdminCouponsController(NestDbContext db, IStripeService stripeServi
         logger.LogInformation("Admin deactivated coupon {CouponId}", id);
 
         return Ok(new { coupon.Id, coupon.IsActive });
+    }
+
+    [HttpPost("{id:guid}/set-default")]
+    public async Task<IActionResult> SetDefaultCoupon(Guid id, [FromBody] SetDefaultCouponRequest request)
+    {
+        var coupon = await db.Coupons.FirstOrDefaultAsync(c => c.Id == id);
+        if (coupon is null) return NotFound();
+
+        var plan = await db.Plans.AsTracking().FirstOrDefaultAsync(p => p.Id == coupon.PlanId);
+        if (plan is null) return BadRequest("Plan not found");
+
+        if (request.IsDefault)
+        {
+            plan.DefaultCouponId = coupon.Id;
+        }
+        else
+        {
+            if (plan.DefaultCouponId == coupon.Id)
+                plan.DefaultCouponId = null;
+        }
+
+        await db.SaveChangesAsync();
+
+        logger.LogInformation("Admin {Action} default coupon {CouponId} for plan {PlanId}",
+            request.IsDefault ? "set" : "removed", id, plan.Id);
+
+        return Ok(new { coupon.Id, IsDefaultForPlan = plan.DefaultCouponId == coupon.Id });
     }
 }

@@ -115,7 +115,10 @@ public static class TestDatabaseHelper
         string code = "TEST-COUPON",
         int freeMonths = 1,
         int maxRedemptions = 100,
-        bool isActive = true)
+        bool isActive = true,
+        DateTimeOffset? expiresAt = null,
+        DiscountType discountType = DiscountType.FreeMonths,
+        int timesRedeemed = 0)
     {
         using var scope = services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
@@ -127,12 +130,28 @@ public static class TestDatabaseHelper
             FreeMonths = freeMonths,
             MaxRedemptions = maxRedemptions,
             IsActive = isActive,
-            CreatedByUserId = createdByUserId
+            CreatedByUserId = createdByUserId,
+            ExpiresAt = expiresAt,
+            DiscountType = discountType,
+            TimesRedeemed = timesRedeemed
         };
         db.Coupons.Add(coupon);
         await db.SaveChangesAsync();
 
         return coupon;
+    }
+
+    public static async Task SetPlanDefaultCouponAsync(
+        IServiceProvider services,
+        Guid planId,
+        Guid? couponId)
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
+
+        var plan = await db.Plans.AsTracking().FirstAsync(p => p.Id == planId);
+        plan.DefaultCouponId = couponId;
+        await db.SaveChangesAsync();
     }
 
     public static async Task<CompanyDeal> SeedCompanyDealAsync(

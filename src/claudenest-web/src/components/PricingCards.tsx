@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Sparkles, Tag, Check } from "lucide-react";
+import { ChevronDown, ChevronUp, Sparkles, Star, Check } from "lucide-react";
 import { clsx } from "clsx";
 import type { PlanInfo, CouponValidation } from "../types";
 import { formatDiscountDescription } from "../types";
@@ -42,8 +42,17 @@ export function PricingCards({
       <div className="grid gap-6 md:grid-cols-3">
         {mainPlans.map((plan) => {
           const isPopular = plan.name === "Robin";
-          const hasCoupon = !!plan.defaultCoupon;
-          const freeDays = hasCoupon ? plan.defaultCoupon!.freeMonths * 30 : 0;
+          const coupon = plan.defaultCoupon;
+          const couponDesc = coupon
+            ? formatDiscountDescription(
+                coupon.discountType,
+                coupon.freeMonths,
+                coupon.percentOff,
+                coupon.amountOffCents,
+                coupon.freeDays,
+                coupon.durationMonths,
+              )
+            : null;
 
           return (
             <div
@@ -64,37 +73,20 @@ export function PricingCards({
                 </div>
               )}
 
-              {hasCoupon && !isPopular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white">
-                    <Tag className="h-3 w-3" aria-hidden="true" />
-                    {freeDays}-day free trial
-                  </span>
-                </div>
-              )}
-
               <div className="mt-2">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  {plan.name}
-                </h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    {plan.name}
+                  </h3>
+                  {coupon && <CouponBadge description={couponDesc!} />}
+                </div>
                 <div className="mt-2 flex items-baseline gap-1">
-                  {hasCoupon ? (
-                    <span className="text-sm text-gray-500 dark:text-gray-400">
-                      <span className="text-3xl font-bold text-gray-900 dark:text-white">
-                        ${(plan.priceCents / 100).toFixed(0)}
-                      </span>{" "}
-                      AUD/mo after {freeDays}-day free trial
-                    </span>
-                  ) : (
-                    <>
-                      <span className="text-3xl font-bold text-gray-900 dark:text-white">
-                        ${(plan.priceCents / 100).toFixed(0)}
-                      </span>
-                      <span className="text-sm text-gray-500 dark:text-gray-400">
-                        AUD/mo
-                      </span>
-                    </>
-                  )}
+                  <span className="text-3xl font-bold text-gray-900 dark:text-white">
+                    ${(plan.priceCents / 100).toFixed(0)}
+                  </span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    AUD/mo
+                  </span>
                 </div>
               </div>
 
@@ -107,12 +99,6 @@ export function PricingCards({
                   <span className="text-nest-500" aria-hidden="true">&#10003;</span>
                   {plan.maxSessions} concurrent sessions
                 </li>
-                {hasCoupon && (
-                  <li className="flex items-center gap-2">
-                    <span className="text-amber-500" aria-hidden="true">&#10003;</span>
-                    {freeDays}-day free trial
-                  </li>
-                )}
               </ul>
 
               {currentPlanId === plan.id && hasActiveSubscription ? (
@@ -131,7 +117,7 @@ export function PricingCards({
                       : "border border-gray-300 text-gray-900 hover:bg-gray-50 dark:border-gray-700 dark:text-white dark:hover:bg-gray-800",
                   )}
                 >
-                  {selecting === plan.id ? "Selecting..." : hasCoupon ? "Start free trial" : "Get started"}
+                  {selecting === plan.id ? "Selecting..." : "Get started"}
                 </button>
               )}
             </div>
@@ -221,7 +207,21 @@ export function PricingCards({
                         className="border-b border-gray-100 last:border-0 dark:border-gray-800"
                       >
                         <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
-                          {plan.name}
+                          <span className="inline-flex items-center gap-1.5">
+                            {plan.name}
+                            {plan.defaultCoupon && (
+                              <CouponBadge
+                                description={formatDiscountDescription(
+                                  plan.defaultCoupon.discountType,
+                                  plan.defaultCoupon.freeMonths,
+                                  plan.defaultCoupon.percentOff,
+                                  plan.defaultCoupon.amountOffCents,
+                                  plan.defaultCoupon.freeDays,
+                                  plan.defaultCoupon.durationMonths,
+                                )}
+                              />
+                            )}
+                          </span>
                         </td>
                         <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                           ${(plan.priceCents / 100).toFixed(0)} AUD/mo
@@ -258,5 +258,44 @@ export function PricingCards({
         </div>
       )}
     </>
+  );
+}
+
+function CouponBadge({ description }: { description: string }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <span className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+        aria-label="Offer available"
+      >
+        <Star className="h-3 w-3 fill-current" aria-hidden="true" />
+        Offer
+      </button>
+      {open && (
+        <span className="absolute left-1/2 top-full z-10 mt-2 w-64 -translate-x-1/2 rounded-lg border border-gray-200 bg-white p-3 text-left text-xs shadow-lg dark:border-gray-700 dark:bg-gray-800">
+          <span className="block font-semibold text-gray-900 dark:text-white">
+            {description}
+          </span>
+          <span className="mt-1.5 block text-gray-500 dark:text-gray-400">
+            Applied automatically at checkout. Limited availability — if the offer has ended by checkout, take a screenshot showing it was listed and reach out at{" "}
+            <a
+              href="https://gordonbeeming.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-nest-600 underline hover:text-nest-500 dark:text-nest-400"
+            >
+              gordonbeeming.com
+            </a>{" "}
+            and I'll apply a coupon to your account.
+          </span>
+        </span>
+      )}
+    </span>
   );
 }

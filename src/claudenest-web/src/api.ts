@@ -235,6 +235,13 @@ export async function deleteAdminCoupon(id: string): Promise<void> {
   return apiFetch<void>(`/admin/coupons/${id}`, { method: "DELETE" });
 }
 
+export async function setDefaultCoupon(id: string, isDefault: boolean): Promise<{ id: string; isDefaultForPlan: boolean }> {
+  return apiFetch<{ id: string; isDefaultForPlan: boolean }>(`/admin/coupons/${id}/set-default`, {
+    method: "POST",
+    body: JSON.stringify({ isDefault }),
+  });
+}
+
 export async function getAdminCompanyDeals(): Promise<CompanyDeal[]> {
   return apiFetch<CompanyDeal[]>("/admin/company-deals");
 }

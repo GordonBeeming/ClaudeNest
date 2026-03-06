@@ -12,7 +12,7 @@ public static class DevDataSeeder
     public static readonly Guid DevUserId = Guid.Parse("00000000-0000-0000-0000-000000000001");
     public static readonly Guid DevAgentId = Guid.Parse("00000000-0000-0000-0000-000000000002");
     public static readonly Guid DevAccountId = Guid.Parse("00000000-0000-0000-0000-000000000003");
-    public static readonly Guid HawkPlanId = Guid.Parse("10000000-0000-0000-0000-000000000003");
+    public static readonly Guid CondorPlanId = Guid.Parse("10000000-0000-0000-0000-000000000006");
     public static readonly Guid WrenPlanId = Guid.Parse("10000000-0000-0000-0000-000000000001");
     public static readonly Guid WrenTrialCouponId = Guid.Parse("20000000-0000-0000-0000-000000000001");
     public const string DevAgentSecret = "dev-secret-do-not-use-in-production";
@@ -44,7 +44,7 @@ public static class DevDataSeeder
             {
                 Id = DevAccountId,
                 Name = "Dev Account",
-                PlanId = HawkPlanId,
+                PlanId = CondorPlanId,
                 SubscriptionStatus = SubscriptionStatus.Active
             });
             await db.SaveChangesAsync();
@@ -64,16 +64,9 @@ public static class DevDataSeeder
             });
             await db.SaveChangesAsync();
         }
-        else
-        {
-            // Ensure existing dev user is admin
-            var devUser = await db.Users.FindAsync(DevUserId);
-            if (devUser is not null && !devUser.IsAdmin)
-            {
-                devUser.IsAdmin = true;
-                await db.SaveChangesAsync();
-            }
-        }
+
+        // Always ensure dev user is admin and on the highest plan
+        await EnsureDevUserAsync(db);
 
         // Seed dev agent if not exists
         if (!await db.Agents.AnyAsync(a => a.Id == DevAgentId))
@@ -126,6 +119,34 @@ public static class DevDataSeeder
                 wrenPlan.DefaultCouponId = WrenTrialCouponId;
                 await db.SaveChangesAsync();
             }
+        }
+    }
+
+    /// <summary>
+    /// Runs every startup to ensure the dev user is always admin and on the highest plan.
+    /// Uses ExecuteUpdateAsync to bypass tracking issues.
+    /// </summary>
+    private static async Task EnsureDevUserAsync(NestDbContext db)
+    {
+        // Ensure dev user is admin
+        await db.Users
+            .Where(u => u.Id == DevUserId && !u.IsAdmin)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.IsAdmin, true));
+
+        // Ensure dev account is on the highest active plan
+        var topPlan = await db.Plans
+            .Where(p => p.IsActive)
+            .OrderByDescending(p => p.SortOrder)
+            .Select(p => p.Id)
+            .FirstOrDefaultAsync();
+
+        if (topPlan != Guid.Empty)
+        {
+            await db.Accounts
+                .Where(a => a.Id == DevAccountId && a.PlanId != topPlan)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(a => a.PlanId, topPlan)
+                    .SetProperty(a => a.SubscriptionStatus, SubscriptionStatus.Active));
         }
     }
 }

@@ -14,7 +14,14 @@ export interface PlanInfo {
   maxAgents: number;
   maxSessions: number;
   priceCents: number;
-  defaultCoupon?: { freeMonths: number } | null;
+  defaultCoupon?: {
+    freeMonths: number;
+    discountType: DiscountType;
+    percentOff: number | null;
+    amountOffCents: number | null;
+    freeDays: number | null;
+    durationMonths: number;
+  } | null;
   sortOrder: number;
 }
 
@@ -127,6 +134,7 @@ export interface CouponInfo {
   timesRedeemed: number;
   expiresAt: string | null;
   isActive: boolean;
+  isDefaultForPlan: boolean;
   createdAt: string;
 }
 

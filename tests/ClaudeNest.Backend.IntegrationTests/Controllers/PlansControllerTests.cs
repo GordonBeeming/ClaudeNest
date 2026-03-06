@@ -28,7 +28,6 @@ public class PlansControllerTests(ClaudeNestWebApplicationFactory factory) : ICl
     [Fact]
     public async Task GetPlans_IncludesDefaultCouponInfo()
     {
-        // Seed an admin user to create the coupon
         var adminUser = new TestUser("auth0|plans-coupon-admin", "plans-coupon-admin@test.com", "Plans Coupon Admin");
         var (user, _) = await TestDatabaseHelper.SeedUserAsync(factory.Services, adminUser, isAdmin: true);
 
@@ -36,31 +35,117 @@ public class PlansControllerTests(ClaudeNestWebApplicationFactory factory) : ICl
             factory.Services, user.Id, ClaudeNestWebApplicationFactory.WrenPlanId,
             code: "PLANS-DEFAULT", freeMonths: 2);
 
-        // Set as default coupon on Wren plan
-        using (var scope = factory.Services.CreateScope())
+        await TestDatabaseHelper.SetPlanDefaultCouponAsync(factory.Services,
+            ClaudeNestWebApplicationFactory.WrenPlanId, coupon.Id);
+
+        try
         {
-            var db = scope.ServiceProvider.GetRequiredService<ClaudeNest.Backend.Data.NestDbContext>();
-            var plan = await db.Plans.AsTracking().FirstAsync(p => p.Id == ClaudeNestWebApplicationFactory.WrenPlanId);
-            plan.DefaultCouponId = coupon.Id;
-            await db.SaveChangesAsync();
+            var client = factory.CreateClient();
+            var response = await client.GetAsync("/api/plans");
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var plans = await response.Content.ReadFromJsonAsync<JsonElement>();
+            var wrenPlan = plans.EnumerateArray().First(p => p.GetProperty("name").GetString() == "Wren");
+            var dc = wrenPlan.GetProperty("defaultCoupon");
+            Assert.NotEqual(JsonValueKind.Null, dc.ValueKind);
+            Assert.Equal(2, dc.GetProperty("freeMonths").GetInt32());
+            Assert.Equal("FreeMonths", dc.GetProperty("discountType").GetString());
         }
-
-        var client = factory.CreateClient();
-        var response = await client.GetAsync("/api/plans");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var plans = await response.Content.ReadFromJsonAsync<JsonElement>();
-        var wrenPlan = plans.EnumerateArray().First(p => p.GetProperty("name").GetString() == "Wren");
-        Assert.NotEqual(JsonValueKind.Null, wrenPlan.GetProperty("defaultCoupon").ValueKind);
-        Assert.Equal(2, wrenPlan.GetProperty("defaultCoupon").GetProperty("freeMonths").GetInt32());
-
-        // Clean up default coupon
-        using (var scope = factory.Services.CreateScope())
+        finally
         {
-            var db = scope.ServiceProvider.GetRequiredService<ClaudeNest.Backend.Data.NestDbContext>();
-            var plan = await db.Plans.AsTracking().FirstAsync(p => p.Id == ClaudeNestWebApplicationFactory.WrenPlanId);
-            plan.DefaultCouponId = null;
-            await db.SaveChangesAsync();
+            await TestDatabaseHelper.SetPlanDefaultCouponAsync(factory.Services,
+                ClaudeNestWebApplicationFactory.WrenPlanId, null);
+        }
+    }
+
+    [Fact]
+    public async Task GetPlans_HidesDefaultCoupon_WhenExpired()
+    {
+        var adminUser = new TestUser("auth0|plans-expired-admin", "plans-expired-admin@test.com", "Plans Expired Admin");
+        var (user, _) = await TestDatabaseHelper.SeedUserAsync(factory.Services, adminUser, isAdmin: true);
+
+        var coupon = await TestDatabaseHelper.SeedCouponAsync(
+            factory.Services, user.Id, ClaudeNestWebApplicationFactory.WrenPlanId,
+            code: "PLANS-EXPIRED", freeMonths: 1,
+            expiresAt: DateTimeOffset.UtcNow.AddDays(-1));
+
+        await TestDatabaseHelper.SetPlanDefaultCouponAsync(factory.Services,
+            ClaudeNestWebApplicationFactory.WrenPlanId, coupon.Id);
+
+        try
+        {
+            var client = factory.CreateClient();
+            var response = await client.GetAsync("/api/plans");
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var plans = await response.Content.ReadFromJsonAsync<JsonElement>();
+            var wrenPlan = plans.EnumerateArray().First(p => p.GetProperty("name").GetString() == "Wren");
+            Assert.Equal(JsonValueKind.Null, wrenPlan.GetProperty("defaultCoupon").ValueKind);
+        }
+        finally
+        {
+            await TestDatabaseHelper.SetPlanDefaultCouponAsync(factory.Services,
+                ClaudeNestWebApplicationFactory.WrenPlanId, null);
+        }
+    }
+
+    [Fact]
+    public async Task GetPlans_HidesDefaultCoupon_WhenMaxedOut()
+    {
+        var adminUser = new TestUser("auth0|plans-maxed-admin", "plans-maxed-admin@test.com", "Plans Maxed Admin");
+        var (user, _) = await TestDatabaseHelper.SeedUserAsync(factory.Services, adminUser, isAdmin: true);
+
+        var coupon = await TestDatabaseHelper.SeedCouponAsync(
+            factory.Services, user.Id, ClaudeNestWebApplicationFactory.WrenPlanId,
+            code: "PLANS-MAXED", freeMonths: 1, maxRedemptions: 5, timesRedeemed: 5);
+
+        await TestDatabaseHelper.SetPlanDefaultCouponAsync(factory.Services,
+            ClaudeNestWebApplicationFactory.WrenPlanId, coupon.Id);
+
+        try
+        {
+            var client = factory.CreateClient();
+            var response = await client.GetAsync("/api/plans");
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var plans = await response.Content.ReadFromJsonAsync<JsonElement>();
+            var wrenPlan = plans.EnumerateArray().First(p => p.GetProperty("name").GetString() == "Wren");
+            Assert.Equal(JsonValueKind.Null, wrenPlan.GetProperty("defaultCoupon").ValueKind);
+        }
+        finally
+        {
+            await TestDatabaseHelper.SetPlanDefaultCouponAsync(factory.Services,
+                ClaudeNestWebApplicationFactory.WrenPlanId, null);
+        }
+    }
+
+    [Fact]
+    public async Task GetPlans_HidesDefaultCoupon_WhenInactive()
+    {
+        var adminUser = new TestUser("auth0|plans-inactive-admin", "plans-inactive-admin@test.com", "Plans Inactive Admin");
+        var (user, _) = await TestDatabaseHelper.SeedUserAsync(factory.Services, adminUser, isAdmin: true);
+
+        var coupon = await TestDatabaseHelper.SeedCouponAsync(
+            factory.Services, user.Id, ClaudeNestWebApplicationFactory.WrenPlanId,
+            code: "PLANS-INACTIVE", freeMonths: 1, isActive: false);
+
+        await TestDatabaseHelper.SetPlanDefaultCouponAsync(factory.Services,
+            ClaudeNestWebApplicationFactory.WrenPlanId, coupon.Id);
+
+        try
+        {
+            var client = factory.CreateClient();
+            var response = await client.GetAsync("/api/plans");
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var plans = await response.Content.ReadFromJsonAsync<JsonElement>();
+            var wrenPlan = plans.EnumerateArray().First(p => p.GetProperty("name").GetString() == "Wren");
+            Assert.Equal(JsonValueKind.Null, wrenPlan.GetProperty("defaultCoupon").ValueKind);
+        }
+        finally
+        {
+            await TestDatabaseHelper.SetPlanDefaultCouponAsync(factory.Services,
+                ClaudeNestWebApplicationFactory.WrenPlanId, null);
         }
     }
 }
