@@ -11,8 +11,10 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
     public override async Task OnConnectedAsync()
     {
         var httpContext = Context.GetHttpContext();
-        var isAgent = httpContext?.Items.ContainsKey("AgentId") == true;
-        var isUser = Context.User?.Identity?.IsAuthenticated == true;
+        var isAgent = httpContext?.Items.ContainsKey("AgentId") == true
+            || Context.User?.FindFirst("AgentId") is not null; // Azure SignalR carries claims via JWT
+        var isUser = Context.User?.Identity?.IsAuthenticated == true
+            && Context.User.FindFirst("AgentId") is null; // Exclude agent ClaimsPrincipal
 
         if (!isAgent && !isUser)
         {

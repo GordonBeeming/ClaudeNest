@@ -265,8 +265,11 @@ app.UseForwardedHeaders(forwardedHeadersOptions);
 
 app.UseCors();
 app.UseRateLimiter();
-app.UseAuthentication();
+// AgentAuthMiddleware runs BEFORE UseAuthentication so it can set context.User with agent
+// claims. This is needed for Azure SignalR Service, which includes User claims in the JWT
+// it generates during negotiate. The JWT handler's OnMessageReceived skips agent-hmac tokens.
 app.UseMiddleware<AgentAuthMiddleware>();
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();

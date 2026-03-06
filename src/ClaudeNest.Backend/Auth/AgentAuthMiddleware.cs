@@ -1,5 +1,8 @@
+using System.Collections.Concurrent;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using ClaudeNest.Backend.Data;
 using ClaudeNest.Backend.Extensions;
 using Microsoft.EntityFrameworkCore;
@@ -10,9 +13,13 @@ public class AgentAuthMiddleware(RequestDelegate next, ILogger<AgentAuthMiddlewa
 {
     private static readonly TimeSpan TimestampTolerance = TimeSpan.FromMinutes(5);
 
+    // Bridges old agents that authenticate during negotiate but can't send auth on WebSocket upgrade.
+    // Maps SignalR connectionToken -> authenticated agentId with a short TTL.
+    private static readonly ConcurrentDictionary<string, (Guid AgentId, DateTimeOffset ExpiresAt)> NegotiateAuthCache = new();
+
     public async Task InvokeAsync(HttpContext context, NestDbContext db, TimeProvider timeProvider)
     {
-        // Only apply to the SignalR hub negotiate endpoint for agents
+        // Only apply to the SignalR hub endpoint for agents
         if (!context.Request.Path.StartsWithSegments("/hubs/nest"))
         {
             await next(context);
@@ -33,6 +40,20 @@ public class AgentAuthMiddleware(RequestDelegate next, ILogger<AgentAuthMiddlewa
                 if (parts.Length == 3 && Guid.TryParse(parts[0], out var tokenAgentId))
                 {
                     await HandleHmacAuth(context, db, timeProvider, tokenAgentId, parts[1], parts[2]);
+                    return;
+                }
+            }
+
+            // Check negotiate cache — old agents authenticate during negotiate (HMAC headers on HTTP)
+            // but can't send auth on the subsequent WebSocket upgrade request. The connectionToken
+            // from the negotiate response links the two requests.
+            var connectionToken = context.Request.Query["id"].FirstOrDefault();
+            if (connectionToken is not null && NegotiateAuthCache.TryRemove(connectionToken, out var cached))
+            {
+                if (cached.ExpiresAt > timeProvider.GetUtcNow())
+                {
+                    SetAgentIdentity(context, cached.AgentId);
+                    await next(context);
                     return;
                 }
             }
@@ -136,8 +157,84 @@ public class AgentAuthMiddleware(RequestDelegate next, ILogger<AgentAuthMiddlewa
         // Valid — update last used and continue
         credential.LastUsedAt = timeProvider.GetUtcNow();
         await db.SaveChangesAsync();
-        context.Items["AgentId"] = agentId;
+        SetAgentIdentity(context, agentId);
+
+        // For negotiate requests, capture the connectionToken from the response so we can
+        // authenticate the subsequent WebSocket upgrade request (which won't have HMAC headers
+        // on old agents that don't use AccessTokenProvider).
+        var isNegotiate = context.Request.Path.Value?.EndsWith("/negotiate") == true;
+        if (isNegotiate)
+        {
+            await CallNextAndCacheNegotiateToken(context, agentId, timeProvider);
+        }
+        else
+        {
+            await next(context);
+        }
+    }
+
+    /// <summary>
+    /// Buffers the negotiate response to extract the connectionToken, then caches
+    /// the agentId so the follow-up WebSocket request can be authenticated.
+    /// </summary>
+    private async Task CallNextAndCacheNegotiateToken(HttpContext context, Guid agentId, TimeProvider timeProvider)
+    {
+        var originalBody = context.Response.Body;
+        using var buffer = new MemoryStream();
+        context.Response.Body = buffer;
+
         await next(context);
+
+        // Parse connectionToken from the negotiate response
+        buffer.Position = 0;
+        try
+        {
+            using var doc = await JsonDocument.ParseAsync(buffer);
+            if (doc.RootElement.TryGetProperty("connectionToken", out var tokenElement))
+            {
+                var connectionToken = tokenElement.GetString();
+                if (connectionToken is not null)
+                {
+                    NegotiateAuthCache[connectionToken] = (agentId, timeProvider.GetUtcNow().AddMinutes(1));
+
+                    // Periodic cleanup of expired entries
+                    if (NegotiateAuthCache.Count > 100)
+                    {
+                        var now = timeProvider.GetUtcNow();
+                        foreach (var key in NegotiateAuthCache.Keys)
+                        {
+                            if (NegotiateAuthCache.TryGetValue(key, out var entry) && entry.ExpiresAt < now)
+                                NegotiateAuthCache.TryRemove(key, out _);
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Best effort — if we can't parse (e.g. Azure SignalR redirect response),
+            // old agents without AccessTokenProvider won't connect but new agents will.
+        }
+
+        // Write the buffered response to the original stream
+        buffer.Position = 0;
+        await buffer.CopyToAsync(originalBody);
+        context.Response.Body = originalBody;
+    }
+
+    /// <summary>
+    /// Sets both HttpContext.Items (for in-process SignalR) and a ClaimsPrincipal with
+    /// the agent identity (for Azure SignalR Service, which carries claims through its JWT).
+    /// </summary>
+    private static void SetAgentIdentity(HttpContext context, Guid agentId)
+    {
+        context.Items["AgentId"] = agentId;
+
+        // Set a ClaimsPrincipal so Azure SignalR Service includes the agent identity
+        // in the connection JWT it generates during negotiate.
+        var claims = new[] { new Claim("AgentId", agentId.ToString()) };
+        var identity = new ClaimsIdentity(claims, "AgentHmac");
+        context.User = new ClaimsPrincipal(identity);
     }
 
     private static string? ExtractAgentHmacToken(HttpContext context)
@@ -177,7 +274,7 @@ public class AgentAuthMiddleware(RequestDelegate next, ILogger<AgentAuthMiddlewa
         // Update last used
         credential.LastUsedAt = timeProvider.GetUtcNow();
         await db.SaveChangesAsync();
-        context.Items["AgentId"] = agentId;
+        SetAgentIdentity(context, agentId);
         await next(context);
     }
 }
