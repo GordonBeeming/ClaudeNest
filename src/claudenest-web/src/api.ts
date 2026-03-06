@@ -226,7 +226,7 @@ export async function createAdminCoupon(data: {
 
 export async function updateAdminCoupon(id: string, data: { maxRedemptions?: number; expiresAt?: string | null; isActive?: boolean }): Promise<CouponInfo> {
   return apiFetch<CouponInfo>(`/admin/coupons/${id}`, {
-    method: "PATCH",
+    method: "PUT",
     body: JSON.stringify(data),
   });
 }

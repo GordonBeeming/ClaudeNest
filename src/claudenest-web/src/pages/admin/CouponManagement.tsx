@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { Tag, Plus, RefreshCw, Trash2, Star } from "lucide-react";
+import { Tag, Plus, RefreshCw, Trash2, Star, Pencil, X, Check } from "lucide-react";
 import { clsx } from "clsx";
 import { format } from "date-fns";
-import { getAdminCoupons, createAdminCoupon, deleteAdminCoupon, setDefaultCoupon, getPlans } from "../../api";
+import { getAdminCoupons, createAdminCoupon, deleteAdminCoupon, setDefaultCoupon, updateAdminCoupon, getPlans } from "../../api";
 import type { CouponInfo, PlanInfo, DiscountType } from "../../types";
 import { formatDiscountDescription } from "../../types";
 import { PlanPicker } from "../../components/PlanPicker";
@@ -27,6 +27,11 @@ export function CouponManagement() {
   const [durationMonths, setDurationMonths] = useState(3);
   const [maxRedemptions, setMaxRedemptions] = useState(1);
   const [expiresAt, setExpiresAt] = useState("");
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editMaxRedemptions, setEditMaxRedemptions] = useState(0);
+  const [editExpiresAt, setEditExpiresAt] = useState("");
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -112,6 +117,38 @@ export function CouponManagement() {
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update default coupon");
+    }
+  }
+
+  function startEditing(coupon: CouponInfo) {
+    setEditingId(coupon.id);
+    setEditMaxRedemptions(coupon.maxRedemptions);
+    setEditExpiresAt(
+      coupon.expiresAt ? format(new Date(coupon.expiresAt), "yyyy-MM-dd") : ""
+    );
+  }
+
+  function cancelEditing() {
+    setEditingId(null);
+  }
+
+  async function handleSaveEdit(coupon: CouponInfo) {
+    setEditSubmitting(true);
+    setError(null);
+    try {
+      const updated = await updateAdminCoupon(coupon.id, {
+        maxRedemptions: editMaxRedemptions,
+        expiresAt: editExpiresAt || null,
+      });
+      setCoupons((prev) =>
+        prev.map((c) => (c.id === coupon.id ? { ...updated, isDefaultForPlan: c.isDefaultForPlan, planName: c.planName } : c))
+      );
+      setSuccess(`Coupon "${coupon.code}" updated`);
+      setEditingId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update coupon");
+    } finally {
+      setEditSubmitting(false);
     }
   }
 
@@ -365,12 +402,34 @@ export function CouponManagement() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                      {coupon.timesRedeemed} / {coupon.maxRedemptions}
+                      {editingId === coupon.id ? (
+                        <span className="flex items-center gap-1">
+                          {coupon.timesRedeemed} /
+                          <input
+                            type="number"
+                            min={coupon.timesRedeemed || 1}
+                            value={editMaxRedemptions}
+                            onChange={(e) => setEditMaxRedemptions(Number(e.target.value))}
+                            className="w-20 rounded border border-gray-300 px-2 py-0.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                          />
+                        </span>
+                      ) : (
+                        <>{coupon.timesRedeemed} / {coupon.maxRedemptions}</>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                      {coupon.expiresAt
-                        ? format(new Date(coupon.expiresAt), "dd MMM yyyy")
-                        : "Never"}
+                      {editingId === coupon.id ? (
+                        <input
+                          type="date"
+                          value={editExpiresAt}
+                          onChange={(e) => setEditExpiresAt(e.target.value)}
+                          className="rounded border border-gray-300 px-2 py-0.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                        />
+                      ) : coupon.expiresAt ? (
+                        format(new Date(coupon.expiresAt), "dd MMM yyyy")
+                      ) : (
+                        "Never"
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -386,29 +445,61 @@ export function CouponManagement() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        {coupon.isActive && (
-                          <button
-                            onClick={() => handleToggleDefault(coupon)}
-                            className={clsx(
-                              "inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors",
-                              coupon.isDefaultForPlan
-                                ? "text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20"
-                                : "text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800"
+                        {editingId === coupon.id ? (
+                          <>
+                            <button
+                              onClick={() => handleSaveEdit(coupon)}
+                              disabled={editSubmitting}
+                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20 transition-colors"
+                            >
+                              {editSubmitting ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                              Save
+                            </button>
+                            <button
+                              onClick={cancelEditing}
+                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
+                            >
+                              <X className="h-3 w-3" />
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {coupon.isActive && (
+                              <button
+                                onClick={() => startEditing(coupon)}
+                                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
+                                title="Edit max redemptions and expiration"
+                              >
+                                <Pencil className="h-3 w-3" />
+                                Edit
+                              </button>
                             )}
-                            title={coupon.isDefaultForPlan ? "Remove as auto-apply default" : "Set as auto-apply default for this plan"}
-                          >
-                            <Star className={clsx("h-3 w-3", coupon.isDefaultForPlan && "fill-current")} />
-                            {coupon.isDefaultForPlan ? "Default" : "Set default"}
-                          </button>
-                        )}
-                        {coupon.isActive && (
-                          <button
-                            onClick={() => handleDeactivate(coupon)}
-                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                            Deactivate
-                          </button>
+                            {coupon.isActive && (
+                              <button
+                                onClick={() => handleToggleDefault(coupon)}
+                                className={clsx(
+                                  "inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors",
+                                  coupon.isDefaultForPlan
+                                    ? "text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20"
+                                    : "text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800"
+                                )}
+                                title={coupon.isDefaultForPlan ? "Remove as auto-apply default" : "Set as auto-apply default for this plan"}
+                              >
+                                <Star className={clsx("h-3 w-3", coupon.isDefaultForPlan && "fill-current")} />
+                                {coupon.isDefaultForPlan ? "Default" : "Set default"}
+                              </button>
+                            )}
+                            {coupon.isActive && (
+                              <button
+                                onClick={() => handleDeactivate(coupon)}
+                                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                                Deactivate
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </td>
