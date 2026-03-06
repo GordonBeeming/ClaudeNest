@@ -1,7 +1,10 @@
 import { createContext, useContext } from "react";
 import type { useSignalR } from "../hooks/useSignalR";
+import type { AdminAgentSummary } from "../types";
 
-type SignalRContextType = ReturnType<typeof useSignalR>;
+type SignalRContextType = ReturnType<typeof useSignalR> & {
+  adminAgentSummary: AdminAgentSummary | null;
+};
 
 export const SignalRContext = createContext<SignalRContextType | null>(null);
 

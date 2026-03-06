@@ -4,6 +4,7 @@ using System.Threading.RateLimiting;
 using ClaudeNest.Backend.Auth;
 using ClaudeNest.Backend.Data;
 using ClaudeNest.Backend.Hubs;
+using ClaudeNest.Backend.Services;
 using ClaudeNest.Backend.Stripe;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -74,6 +75,9 @@ builder.Services.AddAuthorization();
 
 // Time
 builder.Services.AddSingleton(TimeProvider.System);
+
+// Agent online tracking (in-memory)
+builder.Services.AddSingleton<AgentTracker>();
 
 // SignalR — use camelCase + string enums to match frontend expectations
 var signalRBuilder = builder.Services.AddSignalR(options =>

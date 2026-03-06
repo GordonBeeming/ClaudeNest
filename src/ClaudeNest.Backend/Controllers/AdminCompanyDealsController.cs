@@ -27,7 +27,7 @@ public class AdminCompanyDealsController(NestDbContext db, TimeProvider timeProv
         var domains = deals.Select(d => d.Domain).ToList();
         var userStats = await db.Users
             .Where(u => domains.Any(domain => u.Email.ToLower().EndsWith("@" + domain)))
-            .Select(u => new { u.Email, u.Account.PlanId })
+            .Select(u => new { u.Email, u.Account.PlanId, u.AccountId })
             .ToListAsync();
 
         var result = deals.Select(d =>
@@ -46,6 +46,7 @@ public class AdminCompanyDealsController(NestDbContext db, TimeProvider timeProv
                 d.DeactivatedAt,
                 UserCount = domainUsers.Count,
                 OverriddenCount = domainUsers.Count(u => u.PlanId != d.PlanId),
+                AccountIds = domainUsers.Select(u => u.AccountId.ToString()).Distinct().ToList(),
             };
         }).ToList();
 

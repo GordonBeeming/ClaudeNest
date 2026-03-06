@@ -17,10 +17,12 @@ import { formatDiscountDescription } from "../../types";
 import { Select } from "../../components/Select";
 import { StatusBadge, ActionsDropdown } from "../../components/AdminUserTable";
 import { ScrollableTable } from "../../components/ScrollableTable";
+import { useSignalRContext } from "../../contexts/SignalRContext";
 
 const PAGE_SIZE = 25;
 
 export function Users() {
+  const { adminAgentSummary } = useSignalRContext();
   const [users, setUsers] = useState<AdminUserInfo[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
@@ -376,6 +378,7 @@ export function Users() {
                     <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">User</th>
                     <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Plan</th>
                     <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Status</th>
+                    <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Agents</th>
                     <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Coupon</th>
                     <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Joined</th>
                     <th className="px-4 py-3 text-right font-medium text-gray-500 dark:text-gray-400"><span className="sr-only">Actions</span></th>
@@ -408,6 +411,17 @@ export function Users() {
                       <td className="hidden sm:table-cell px-4 py-3 text-gray-700 dark:text-gray-300">{user.planName || "None"}</td>
                       <td className="hidden sm:table-cell px-4 py-3">
                         <StatusBadge status={user.subscriptionStatus} cancelAtPeriodEnd={user.cancelAtPeriodEnd} />
+                      </td>
+                      <td className="hidden md:table-cell px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {(() => {
+                          const stats = adminAgentSummary?.accounts[user.accountId];
+                          if (!stats) return "-";
+                          return (
+                            <span className="font-mono text-xs">
+                              {stats.online}/{stats.installed}/{stats.maxAgents}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="hidden md:table-cell px-4 py-3 text-gray-700 dark:text-gray-300">
                         {user.activeCoupon ? (

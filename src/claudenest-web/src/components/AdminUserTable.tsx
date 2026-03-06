@@ -12,6 +12,7 @@ import { PlanPicker } from "./PlanPicker";
 import { Select } from "./Select";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { ScrollableTable } from "./ScrollableTable";
+import { useSignalRContext } from "../contexts/SignalRContext";
 
 export function StatusBadge({ status, cancelAtPeriodEnd }: { status: string; cancelAtPeriodEnd: boolean }) {
   if (cancelAtPeriodEnd && status === "Active") {
@@ -142,6 +143,7 @@ interface AdminUserTableProps {
 }
 
 export function AdminUserTable({ domain, plans, coupons, compact }: AdminUserTableProps) {
+  const { adminAgentSummary } = useSignalRContext();
   const [users, setUsers] = useState<AdminUserInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -334,6 +336,7 @@ export function AdminUserTable({ domain, plans, coupons, compact }: AdminUserTab
               <th className={clsx("px-4 text-left font-medium text-gray-500 dark:text-gray-400", py)}>User</th>
               <th className={clsx("hidden sm:table-cell px-4 text-left font-medium text-gray-500 dark:text-gray-400", py)}>Plan</th>
               <th className={clsx("hidden sm:table-cell px-4 text-left font-medium text-gray-500 dark:text-gray-400", py)}>Status</th>
+              <th className={clsx("hidden md:table-cell px-4 text-left font-medium text-gray-500 dark:text-gray-400", py)}>Agents</th>
               <th className={clsx("hidden md:table-cell px-4 text-left font-medium text-gray-500 dark:text-gray-400", py)}>Coupon</th>
               <th className={clsx("hidden md:table-cell px-4 text-left font-medium text-gray-500 dark:text-gray-400", py)}>Joined</th>
               <th className={clsx("px-4 text-right font-medium text-gray-500 dark:text-gray-400", py)}><span className="sr-only">Actions</span></th>
@@ -365,6 +368,17 @@ export function AdminUserTable({ domain, plans, coupons, compact }: AdminUserTab
                 <td className={clsx("hidden sm:table-cell px-4 text-gray-700 dark:text-gray-300", py)}>{user.planName || "None"}</td>
                 <td className={clsx("hidden sm:table-cell px-4", py)}>
                   <StatusBadge status={user.subscriptionStatus} cancelAtPeriodEnd={user.cancelAtPeriodEnd} />
+                </td>
+                <td className={clsx("hidden md:table-cell px-4 text-gray-700 dark:text-gray-300", py)}>
+                  {(() => {
+                    const stats = adminAgentSummary?.accounts[user.accountId];
+                    if (!stats) return "-";
+                    return (
+                      <span className="font-mono text-xs">
+                        {stats.online}/{stats.installed}/{stats.maxAgents}
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td className={clsx("hidden md:table-cell px-4 text-gray-700 dark:text-gray-300", py)}>
                   {user.activeCoupon ? (

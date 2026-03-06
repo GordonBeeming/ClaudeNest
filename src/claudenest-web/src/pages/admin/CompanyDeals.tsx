@@ -7,8 +7,10 @@ import type { CompanyDeal, PlanInfo, CouponInfo } from "../../types";
 import { PlanPicker } from "../../components/PlanPicker";
 import { AdminUserTable } from "../../components/AdminUserTable";
 import { ScrollableTable } from "../../components/ScrollableTable";
+import { useSignalRContext } from "../../contexts/SignalRContext";
 
 export function CompanyDeals() {
+  const { adminAgentSummary } = useSignalRContext();
   const [deals, setDeals] = useState<CompanyDeal[]>([]);
   const [plans, setPlans] = useState<PlanInfo[]>([]);
   const [coupons, setCoupons] = useState<CouponInfo[]>([]);
@@ -196,6 +198,7 @@ export function CompanyDeals() {
                   <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Domain</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Plan</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Users</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Agents</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Status</th>
                   <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Created</th>
                   <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Deactivated</th>
@@ -233,6 +236,29 @@ export function CompanyDeals() {
                             {deal.overriddenCount} overridden
                           </div>
                         )}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {(() => {
+                          if (!adminAgentSummary || !deal.accountIds?.length) return "-";
+                          const agg = deal.accountIds.reduce(
+                            (acc, id) => {
+                              const s = adminAgentSummary.accounts[id];
+                              if (s) {
+                                acc.online += s.online;
+                                acc.installed += s.installed;
+                                acc.maxAgents += s.maxAgents;
+                              }
+                              return acc;
+                            },
+                            { online: 0, installed: 0, maxAgents: 0 },
+                          );
+                          if (agg.installed === 0 && agg.maxAgents === 0) return "-";
+                          return (
+                            <span className="font-mono text-xs">
+                              {agg.online}/{agg.installed}/{agg.maxAgents}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3">
                         <span
@@ -293,7 +319,7 @@ export function CompanyDeals() {
                     </tr>
                     {expandedDealId === deal.id && (
                       <tr key={`${deal.id}-users`}>
-                        <td colSpan={7} className="border-b border-gray-50 bg-gray-50/50 px-2 py-3 dark:border-gray-800/50 dark:bg-gray-800/20">
+                        <td colSpan={8} className="border-b border-gray-50 bg-gray-50/50 px-2 py-3 dark:border-gray-800/50 dark:bg-gray-800/20">
                           <AdminUserTable domain={deal.domain} plans={plans} coupons={coupons} compact />
                         </td>
                       </tr>

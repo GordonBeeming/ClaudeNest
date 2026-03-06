@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
-import { Bird, Wifi, WifiOff, LogOut, Settings, ChevronDown, Shield, UsersRound, Tag, Handshake } from "lucide-react";
+import { Bird, Wifi, WifiOff, LogOut, Settings, ChevronDown, Shield, UsersRound, Tag, Handshake, Monitor } from "lucide-react";
 import { useSignalR } from "../hooks/useSignalR";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { SignalRContext } from "../contexts/SignalRContext";
@@ -10,6 +10,7 @@ import { isAuth0Configured } from "../config";
 import { PastDueBanner } from "./PastDueBanner";
 import { Footer } from "./Footer";
 import { GitHubStarButton } from "./GitHubStarButton";
+import type { AdminAgentSummary } from "../types";
 
 /** Sign out button — only rendered when Auth0 is active (inside Auth0Provider). */
 function Auth0SignOutButton({ onClose }: { onClose: () => void }) {
@@ -142,10 +143,24 @@ function UserMenu() {
 
 export function Layout() {
   const signalR = useSignalR();
-  const { user } = useUserContext();
+  const { user, isAdmin } = useUserContext();
+  const [adminAgentSummary, setAdminAgentSummary] = useState<AdminAgentSummary | null>(null);
+
+  useEffect(() => {
+    if (!isAdmin || !signalR.connected) return;
+
+    signalR.subscribeAsAdmin();
+    const cleanup = signalR.onAdminAgentSummary(setAdminAgentSummary);
+    return cleanup;
+  }, [isAdmin, signalR.connected, signalR.subscribeAsAdmin, signalR.onAdminAgentSummary]);
+
+  const contextValue = useMemo(
+    () => ({ ...signalR, adminAgentSummary }),
+    [signalR, adminAgentSummary],
+  );
 
   return (
-    <SignalRContext.Provider value={signalR}>
+    <SignalRContext.Provider value={contextValue}>
       <div className="flex min-h-screen flex-col">
         <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/80 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-950/80">
           <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
@@ -170,6 +185,13 @@ export function Layout() {
                 <span className="flex items-center gap-1.5 text-xs text-gray-400">
                   <WifiOff className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">Connecting...</span>
+                </span>
+              )}
+
+              {isAdmin && adminAgentSummary && (
+                <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                  <Monitor className="h-3 w-3" />
+                  {adminAgentSummary.global.online}/{adminAgentSummary.global.installed}/{adminAgentSummary.global.maxAgents}
                 </span>
               )}
 

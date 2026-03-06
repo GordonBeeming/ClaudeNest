@@ -140,6 +140,18 @@ export interface CompanyDeal {
   deactivatedAt: string | null;
   userCount: number;
   overriddenCount: number;
+  accountIds: string[];
+}
+
+export interface AdminAgentAccountStats {
+  online: number;
+  installed: number;
+  maxAgents: number;
+}
+
+export interface AdminAgentSummary {
+  global: AdminAgentAccountStats;
+  accounts: Record<string, AdminAgentAccountStats>;
 }
 
 export interface AdminUserInfo {

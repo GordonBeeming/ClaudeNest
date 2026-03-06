@@ -1,12 +1,13 @@
 using System.Text.Json;
 using ClaudeNest.Backend.Data;
+using ClaudeNest.Backend.Services;
 using ClaudeNest.Shared.Messages;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClaudeNest.Backend.Hubs;
 
-public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration configuration, ILogger<NestHub> logger) : Hub
+public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration configuration, ILogger<NestHub> logger, AgentTracker agentTracker) : Hub
 {
     public override async Task OnConnectedAsync()
     {
@@ -60,6 +61,13 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
         // Notify web clients that this agent is online
         await Clients.Group($"user:{agentInfo.AgentId}")
             .SendAsync("AgentStatusChanged", agentInfo.AgentId, true);
+
+        // Track agent online for admin summary
+        if (agent is not null)
+        {
+            agentTracker.TrackOnline(agentInfo.AgentId, agent.AccountId);
+            await BroadcastAdminAgentSummaryAsync();
+        }
 
         // Fetch active sessions the server thinks this agent has
         var activeSessions = await db.Sessions
@@ -358,8 +366,80 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
                         ErrorMessage = "Agent disconnected"
                     });
             }
+
+            // Track agent offline for admin summary
+            agentTracker.TrackOffline(agent.Id);
+            await BroadcastAdminAgentSummaryAsync();
         }
 
         await base.OnDisconnectedAsync(exception);
+    }
+
+    // --- Admin ---
+
+    public async Task SubscribeAsAdmin()
+    {
+        var auth0UserId = Context.User?.FindFirst("sub")?.Value;
+        if (auth0UserId is null) return;
+
+        var isAdmin = await db.Users.AnyAsync(u => u.Auth0UserId == auth0UserId && u.IsAdmin);
+        if (!isAdmin) return;
+
+        await Groups.AddToGroupAsync(Context.ConnectionId, "admin");
+
+        var summary = await BuildAdminAgentSummaryAsync();
+        await Clients.Caller.SendAsync("AdminAgentSummary", summary);
+    }
+
+    private async Task<object> BuildAdminAgentSummaryAsync()
+    {
+        var onlineCounts = agentTracker.GetOnlineCountsByAccount();
+
+        var accountStats = await db.Agents
+            .GroupBy(a => a.AccountId)
+            .Select(g => new
+            {
+                AccountId = g.Key,
+                Installed = g.Count(),
+                MaxAgents = g.First().Account.Plan != null ? g.First().Account.Plan!.MaxAgents : 0
+            })
+            .ToListAsync();
+
+        var accounts = new Dictionary<string, object>();
+        var globalOnline = 0;
+        var globalInstalled = 0;
+        var globalMax = 0;
+
+        foreach (var stat in accountStats)
+        {
+            var online = onlineCounts.GetValueOrDefault(stat.AccountId, 0);
+            globalOnline += online;
+            globalInstalled += stat.Installed;
+            globalMax += stat.MaxAgents;
+
+            accounts[stat.AccountId.ToString()] = new
+            {
+                online,
+                installed = stat.Installed,
+                maxAgents = stat.MaxAgents
+            };
+        }
+
+        return new
+        {
+            global = new
+            {
+                online = globalOnline,
+                installed = globalInstalled,
+                maxAgents = globalMax
+            },
+            accounts
+        };
+    }
+
+    private async Task BroadcastAdminAgentSummaryAsync()
+    {
+        var summary = await BuildAdminAgentSummaryAsync();
+        await Clients.Group("admin").SendAsync("AdminAgentSummary", summary);
     }
 }

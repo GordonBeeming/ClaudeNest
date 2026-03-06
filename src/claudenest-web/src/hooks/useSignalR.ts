@@ -5,7 +5,7 @@ import {
   HubConnectionState,
   LogLevel,
 } from "@microsoft/signalr";
-import type { DirectoryListingResult, SessionStatus } from "../types";
+import type { AdminAgentSummary, DirectoryListingResult, SessionStatus } from "../types";
 import { getAccessToken } from "../api";
 
 export function useSignalR() {
@@ -132,6 +132,21 @@ export function useSignalR() {
     [],
   );
 
+  const subscribeAsAdmin = useCallback(() => {
+    const conn = connectionRef.current;
+    if (conn?.state === HubConnectionState.Connected) {
+      conn.invoke("SubscribeAsAdmin");
+    }
+  }, []);
+
+  const onAdminAgentSummary = useCallback(
+    (handler: (summary: AdminAgentSummary) => void) => {
+      connectionRef.current?.on("AdminAgentSummary", handler);
+      return () => connectionRef.current?.off("AdminAgentSummary", handler);
+    },
+    [],
+  );
+
   return {
     connected,
     subscribeToAgent,
@@ -145,5 +160,7 @@ export function useSignalR() {
     onAllSessionsUpdated,
     onAgentRemoved,
     onAgentUpdateStatus,
+    subscribeAsAdmin,
+    onAdminAgentSummary,
   };
 }
