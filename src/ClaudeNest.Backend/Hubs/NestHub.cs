@@ -8,6 +8,22 @@ namespace ClaudeNest.Backend.Hubs;
 
 public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration configuration, ILogger<NestHub> logger) : Hub
 {
+    public override async Task OnConnectedAsync()
+    {
+        var httpContext = Context.GetHttpContext();
+        var isAgent = httpContext?.Items.ContainsKey("AgentId") == true;
+        var isUser = Context.User?.Identity?.IsAuthenticated == true;
+
+        if (!isAgent && !isUser)
+        {
+            logger.LogWarning("Unauthenticated SignalR connection rejected: {ConnectionId}", Context.ConnectionId);
+            Context.Abort();
+            return;
+        }
+
+        await base.OnConnectedAsync();
+    }
+
     // --- Agent → Server ---
 
     public async Task<AgentRegistrationResult> RegisterAgent(AgentInfo agentInfo)

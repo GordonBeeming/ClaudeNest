@@ -6,4 +6,7 @@
     <Project Path="src/ClaudeNest.ServiceDefaults/ClaudeNest.ServiceDefaults.csproj" />
     <Project Path="src/ClaudeNest.Shared/ClaudeNest.Shared.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ClaudeNest.Backend.IntegrationTests/ClaudeNest.Backend.IntegrationTests.csproj" />
+  </Folder>
 </Solution>

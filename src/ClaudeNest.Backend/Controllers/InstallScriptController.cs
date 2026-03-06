@@ -1,12 +1,14 @@
 using ClaudeNest.Backend.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace ClaudeNest.Backend.Controllers;
 
 [ApiController]
 [Route("")]
 [AllowAnonymous]
+[EnableRateLimiting("installScripts")]
 public class InstallScriptController(IConfiguration configuration, IWebHostEnvironment env) : ControllerBase
 {
     [HttpGet("install.sh")]

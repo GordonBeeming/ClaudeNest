@@ -52,8 +52,8 @@ resource frontendApp 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'frontend'
           image: imageName
           resources: {
-            cpu: json('0.25')
-            memory: '0.5Gi'
+            cpu: json('0.5')
+            memory: '1.0Gi'
           }
           probes: [
             {
@@ -88,7 +88,7 @@ resource frontendApp 'Microsoft.App/containerApps@2024-03-01' = {
       ]
       scale: {
         minReplicas: 1
-        maxReplicas: 2
+        maxReplicas: 4
       }
     }
   }

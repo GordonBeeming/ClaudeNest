@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { ChevronDown } from "lucide-react";
 import { clsx } from "clsx";
+import { useClickOutside } from "../hooks/useClickOutside";
 import type { PlanInfo } from "../types";
 
 interface PlanPickerProps {
@@ -12,25 +13,30 @@ interface PlanPickerProps {
 
 export function PlanPicker({ plans, value, onChange, required }: PlanPickerProps) {
   const [open, setOpen] = useState(false);
+  const [dropUp, setDropUp] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const selected = plans.find((p) => p.id === value);
 
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
+  const closeDropdown = useCallback(() => setOpen(false), []);
+  useClickOutside(ref, closeDropdown, open);
+
+  const handleToggle = useCallback(() => {
+    setOpen((o) => {
+      if (!o && ref.current) {
+        const rect = ref.current.getBoundingClientRect();
+        setDropUp(rect.bottom + 240 > window.innerHeight);
+      }
+      return !o;
+    });
+  }, []);
 
   return (
     <div ref={ref} className="relative">
       <input type="hidden" value={value} required={required} />
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={handleToggle}
         className={clsx(
           "flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors",
           "border-gray-300 bg-white text-gray-900 hover:border-gray-400",
@@ -52,7 +58,10 @@ export function PlanPicker({ plans, value, onChange, required }: PlanPickerProps
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-1 w-full rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+        <div className={clsx(
+          "absolute z-50 w-full rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900",
+          dropUp ? "bottom-full mb-1" : "top-full mt-1",
+        )}>
           {plans.map((plan) => (
             <button
               key={plan.id}

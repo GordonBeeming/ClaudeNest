@@ -6,6 +6,7 @@ import { getAdminCompanyDeals, createAdminCompanyDeal, updateAdminCompanyDeal, d
 import type { CompanyDeal, PlanInfo, CouponInfo } from "../../types";
 import { PlanPicker } from "../../components/PlanPicker";
 import { AdminUserTable } from "../../components/AdminUserTable";
+import { ScrollableTable } from "../../components/ScrollableTable";
 
 export function CompanyDeals() {
   const [deals, setDeals] = useState<CompanyDeal[]>([]);
@@ -188,118 +189,120 @@ export function CompanyDeals() {
             No company deals created yet
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 dark:border-gray-800">
-                <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Domain</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Plan</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Users</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Status</th>
-                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Created</th>
-                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Deactivated</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-500 dark:text-gray-400">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {deals.map((deal) => (
-                <>
-                  <tr key={deal.id} className="border-b border-gray-50 dark:border-gray-800/50">
-                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
-                      <button
-                        onClick={() => setExpandedDealId(expandedDealId === deal.id ? null : deal.id)}
-                        className="flex items-center gap-1.5 hover:text-nest-600 dark:hover:text-nest-400 transition-colors"
-                      >
-                        {expandedDealId === deal.id ? (
-                          <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
+          <ScrollableTable>
+            <table className="min-w-[640px] w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 dark:border-gray-800">
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Domain</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Plan</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Users</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Status</th>
+                  <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Created</th>
+                  <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Deactivated</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-500 dark:text-gray-400">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deals.map((deal) => (
+                  <>
+                    <tr key={deal.id} className="border-b border-gray-50 dark:border-gray-800/50">
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
+                        <button
+                          onClick={() => setExpandedDealId(expandedDealId === deal.id ? null : deal.id)}
+                          className="flex items-center gap-1.5 hover:text-nest-600 dark:hover:text-nest-400 transition-colors"
+                        >
+                          {expandedDealId === deal.id ? (
+                            <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
+                          ) : (
+                            <ChevronRight className="h-3.5 w-3.5 text-gray-400" />
+                          )}
+                          {deal.domain}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {editingDealId === deal.id ? (
+                          <PlanPicker plans={plans} value={editPlanId} onChange={setEditPlanId} required />
                         ) : (
-                          <ChevronRight className="h-3.5 w-3.5 text-gray-400" />
+                          deal.planName
                         )}
-                        {deal.domain}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                      {editingDealId === deal.id ? (
-                        <PlanPicker plans={plans} value={editPlanId} onChange={setEditPlanId} required />
-                      ) : (
-                        deal.planName
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                      <div>{deal.userCount}</div>
-                      {deal.overriddenCount > 0 && (
-                        <div className="text-xs text-amber-600 dark:text-amber-400">
-                          {deal.overriddenCount} overridden
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={clsx(
-                          "rounded-full px-2.5 py-0.5 text-xs font-medium",
-                          deal.isActive
-                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                            : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                        <div>{deal.userCount}</div>
+                        {deal.overriddenCount > 0 && (
+                          <div className="text-xs text-amber-600 dark:text-amber-400">
+                            {deal.overriddenCount} overridden
+                          </div>
                         )}
-                      >
-                        {deal.isActive ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-                    <td className="hidden md:table-cell px-4 py-3 text-gray-700 dark:text-gray-300">
-                      {format(new Date(deal.createdAt), "dd MMM yyyy")}
-                    </td>
-                    <td className="hidden md:table-cell px-4 py-3 text-gray-700 dark:text-gray-300">
-                      {deal.deactivatedAt
-                        ? format(new Date(deal.deactivatedAt), "dd MMM yyyy")
-                        : "-"}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {deal.isActive && editingDealId === deal.id ? (
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => handleUpdate(deal)}
-                            disabled={submitting}
-                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20 transition-colors disabled:opacity-50"
-                          >
-                            {submitting ? <RefreshCw className="h-3 w-3 animate-spin" /> : "Save"}
-                          </button>
-                          <button
-                            onClick={() => setEditingDealId(null)}
-                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : deal.isActive ? (
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => startEditing(deal)}
-                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-nest-600 hover:bg-nest-50 dark:text-nest-400 dark:hover:bg-nest-900/20 transition-colors"
-                          >
-                            <Pencil className="h-3 w-3" />
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeactivate(deal)}
-                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                            Deactivate
-                          </button>
-                        </div>
-                      ) : null}
-                    </td>
-                  </tr>
-                  {expandedDealId === deal.id && (
-                    <tr key={`${deal.id}-users`}>
-                      <td colSpan={7} className="border-b border-gray-50 bg-gray-50/50 px-2 py-3 dark:border-gray-800/50 dark:bg-gray-800/20">
-                        <AdminUserTable domain={deal.domain} plans={plans} coupons={coupons} compact />
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={clsx(
+                            "rounded-full px-2.5 py-0.5 text-xs font-medium",
+                            deal.isActive
+                              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                              : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                          )}
+                        >
+                          {deal.isActive ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td className="hidden md:table-cell px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {format(new Date(deal.createdAt), "dd MMM yyyy")}
+                      </td>
+                      <td className="hidden md:table-cell px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {deal.deactivatedAt
+                          ? format(new Date(deal.deactivatedAt), "dd MMM yyyy")
+                          : "-"}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {deal.isActive && editingDealId === deal.id ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => handleUpdate(deal)}
+                              disabled={submitting}
+                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20 transition-colors disabled:opacity-50"
+                            >
+                              {submitting ? <RefreshCw className="h-3 w-3 animate-spin" /> : "Save"}
+                            </button>
+                            <button
+                              onClick={() => setEditingDealId(null)}
+                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : deal.isActive ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => startEditing(deal)}
+                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-nest-600 hover:bg-nest-50 dark:text-nest-400 dark:hover:bg-nest-900/20 transition-colors"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeactivate(deal)}
+                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              Deactivate
+                            </button>
+                          </div>
+                        ) : null}
                       </td>
                     </tr>
-                  )}
-                </>
-              ))}
-            </tbody>
-          </table>
+                    {expandedDealId === deal.id && (
+                      <tr key={`${deal.id}-users`}>
+                        <td colSpan={7} className="border-b border-gray-50 bg-gray-50/50 px-2 py-3 dark:border-gray-800/50 dark:bg-gray-800/20">
+                          <AdminUserTable domain={deal.domain} plans={plans} coupons={coupons} compact />
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                ))}
+              </tbody>
+            </table>
+          </ScrollableTable>
         )}
       </section>
     </div>

@@ -35,10 +35,33 @@ jobs:
           VERSION="$(date -u +'%Y.%-m.%-d').${{ github.run_number }}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
+  test:
+    runs-on: ubuntu-latest
+    needs: determine-version
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Install Aspire workload
+        run: dotnet workload install aspire
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build -c Release --no-restore
+
+      - name: Test
+        run: dotnet test -c Release --no-restore --no-build
+
   build-backend:
     runs-on: ubuntu-latest
     environment: prod
-    needs: determine-version
+    needs: [determine-version, test]
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 

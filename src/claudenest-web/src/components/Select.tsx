@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { ChevronDown, Check } from "lucide-react";
 import { clsx } from "clsx";
+import { useClickOutside } from "../hooks/useClickOutside";
 
 export interface SelectOption {
   value: string;
@@ -18,31 +19,38 @@ interface SelectProps {
 
 export function Select({ options, value, onChange, placeholder = "Select...", className }: SelectProps) {
   const [open, setOpen] = useState(false);
+  const [dropUp, setDropUp] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const selected = options.find((o) => o.value === value);
 
+  const closeDropdown = useCallback(() => setOpen(false), []);
+  useClickOutside(ref, closeDropdown, open);
+
   useEffect(() => {
     if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
     }
-    document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleKey);
-    };
+    return () => document.removeEventListener("keydown", handleKey);
   }, [open]);
+
+  const handleToggle = useCallback(() => {
+    setOpen((o) => {
+      if (!o && ref.current) {
+        const rect = ref.current.getBoundingClientRect();
+        setDropUp(rect.bottom + 240 > window.innerHeight);
+      }
+      return !o;
+    });
+  }, []);
 
   return (
     <div ref={ref} className={clsx("relative", className)}>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={handleToggle}
         className={clsx(
           "flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors",
           "border-gray-300 bg-white text-gray-900 hover:border-gray-400",
@@ -59,7 +67,10 @@ export function Select({ options, value, onChange, placeholder = "Select...", cl
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+        <div className={clsx(
+          "absolute z-50 max-h-60 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900",
+          dropUp ? "bottom-full mb-1" : "top-full mt-1",
+        )}>
           {options.map((option) => (
             <button
               key={option.value}

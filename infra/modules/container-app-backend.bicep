@@ -100,8 +100,8 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'backend'
           image: imageName
           resources: {
-            cpu: json('0.5')
-            memory: '1.0Gi'
+            cpu: json('2.0')
+            memory: '4.0Gi'
           }
           probes: [
             {
@@ -205,8 +205,8 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
       scale: {
-        minReplicas: 1
-        maxReplicas: 3
+        minReplicas: 2
+        maxReplicas: 5
       }
     }
   }

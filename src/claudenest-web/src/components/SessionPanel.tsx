@@ -56,14 +56,14 @@ function SessionCard({ session, onStop }: SessionCardProps) {
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center">
           {isActive && (
             <>
               <a
                 href="https://claude.ai/code"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                className="flex items-center justify-center gap-1 rounded-lg border border-gray-200 px-3 py-2.5 sm:py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
               >
                 <ExternalLink className="h-3 w-3" />
                 Open in Claude
@@ -71,7 +71,7 @@ function SessionCard({ session, onStop }: SessionCardProps) {
               <button
                 onClick={() => onStop(session.sessionId)}
                 disabled={isStopping}
-                className="flex items-center gap-1 rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100 disabled:opacity-50 dark:bg-red-950/50 dark:text-red-400 dark:hover:bg-red-950"
+                className="flex items-center justify-center gap-1 rounded-lg bg-red-50 px-3 py-2.5 sm:py-1.5 text-xs font-medium text-red-600 hover:bg-red-100 disabled:opacity-50 dark:bg-red-950/50 dark:text-red-400 dark:hover:bg-red-950"
               >
                 <Square className="h-3 w-3" />
                 Stop

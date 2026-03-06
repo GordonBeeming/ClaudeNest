@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Sparkles, Tag, Check } from "lucide-react";
 import { clsx } from "clsx";
 import type { PlanInfo, CouponValidation } from "../types";
 import { formatDiscountDescription } from "../types";
+import { ScrollableTable } from "./ScrollableTable";
 
 export interface PricingCardsProps {
   plans: PlanInfo[];
@@ -202,54 +203,56 @@ export function PricingCards({
 
           {expanded && (
             <div className="mt-6 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900">
-                    <th className="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Plan</th>
-                    <th className="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Price</th>
-                    <th className="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Agents</th>
-                    <th className="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Sessions</th>
-                    <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {extraPlans.map((plan) => (
-                    <tr
-                      key={plan.id}
-                      className="border-b border-gray-100 last:border-0 dark:border-gray-800"
-                    >
-                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
-                        {plan.name}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                        ${(plan.priceCents / 100).toFixed(0)} AUD/mo
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                        {plan.maxAgents}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                        {plan.maxSessions}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {currentPlanId === plan.id && hasActiveSubscription ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
-                            <Check className="h-3 w-3" aria-hidden="true" />
-                            Current
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => onSelectPlan(plan.id)}
-                            disabled={selecting !== null || !!hasActiveSubscription}
-                            className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                          >
-                            {selecting === plan.id ? "..." : "Select"}
-                          </button>
-                        )}
-                      </td>
+              <ScrollableTable>
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900">
+                      <th className="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Plan</th>
+                      <th className="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Price</th>
+                      <th className="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Agents</th>
+                      <th className="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Sessions</th>
+                      <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {extraPlans.map((plan) => (
+                      <tr
+                        key={plan.id}
+                        className="border-b border-gray-100 last:border-0 dark:border-gray-800"
+                      >
+                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
+                          {plan.name}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                          ${(plan.priceCents / 100).toFixed(0)} AUD/mo
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                          {plan.maxAgents}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                          {plan.maxSessions}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {currentPlanId === plan.id && hasActiveSubscription ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                              <Check className="h-3 w-3" aria-hidden="true" />
+                              Current
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => onSelectPlan(plan.id)}
+                              disabled={selecting !== null || !!hasActiveSubscription}
+                              className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                            >
+                              {selecting === plan.id ? "..." : "Select"}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </ScrollableTable>
             </div>
           )}
         </div>

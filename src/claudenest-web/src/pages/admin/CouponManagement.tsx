@@ -6,6 +6,7 @@ import { getAdminCoupons, createAdminCoupon, deleteAdminCoupon, getPlans } from 
 import type { CouponInfo, PlanInfo, DiscountType } from "../../types";
 import { formatDiscountDescription } from "../../types";
 import { PlanPicker } from "../../components/PlanPicker";
+import { ScrollableTable } from "../../components/ScrollableTable";
 
 export function CouponManagement() {
   const [coupons, setCoupons] = useState<CouponInfo[]>([]);
@@ -176,7 +177,7 @@ export function CouponManagement() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {discountType === "FreeMonths" && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Free Months</label>
@@ -312,8 +313,8 @@ export function CouponManagement() {
             No coupons created yet
           </div>
         ) : (
-          <>
-            <table className="w-full text-sm">
+          <ScrollableTable>
+            <table className="min-w-[640px] w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 dark:border-gray-800">
                   <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Code</th>
@@ -375,7 +376,7 @@ export function CouponManagement() {
                 ))}
               </tbody>
             </table>
-          </>
+          </ScrollableTable>
         )}
       </section>
     </div>

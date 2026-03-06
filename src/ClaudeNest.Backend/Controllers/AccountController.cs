@@ -1,4 +1,5 @@
 using ClaudeNest.Backend.Data;
+using ClaudeNest.Backend.Models;
 using ClaudeNest.Backend.Stripe;
 using ClaudeNest.Shared.Enums;
 using Microsoft.AspNetCore.Authorization;
@@ -313,8 +314,3 @@ public class AccountController(NestDbContext db, IStripeService stripeService, T
         });
     }
 }
-
-public record SelectPlanRequest(Guid PlanId, string? CouponCode = null);
-public record SetPermissionModeRequest(string Mode);
-public record RedeemCouponRequest(string Code);
-public record UpdateDisplayNameRequest(string DisplayName);

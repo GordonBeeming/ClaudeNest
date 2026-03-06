@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { RefreshCw, ChevronDown, Ban, Gift, ShieldCheck, ShieldOff, ArrowUpCircle, RotateCcw } from "lucide-react";
 import { clsx } from "clsx";
 import { format } from "date-fns";
@@ -10,6 +10,8 @@ import type { AdminUserInfo, CouponInfo, PlanInfo } from "../types";
 import { formatDiscountDescription } from "../types";
 import { PlanPicker } from "./PlanPicker";
 import { Select } from "./Select";
+import { useClickOutside } from "../hooks/useClickOutside";
+import { ScrollableTable } from "./ScrollableTable";
 
 export function StatusBadge({ status, cancelAtPeriodEnd }: { status: string; cancelAtPeriodEnd: boolean }) {
   if (cancelAtPeriodEnd && status === "Active") {
@@ -55,14 +57,8 @@ export function ActionsDropdown({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
+  const closeMenu = useCallback(() => setOpen(false), []);
+  useClickOutside(ref, closeMenu, open);
 
   return (
     <div ref={ref} className="relative">
@@ -234,8 +230,8 @@ export function AdminUserTable({ domain, plans, coupons, compact }: AdminUserTab
     <>
       {/* Give Coupon Modal */}
       {giveCouponUserId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="mx-4 w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center">
+          <div className="w-full max-w-md rounded-t-2xl border border-gray-200 bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-xl dark:border-gray-700 dark:bg-gray-900 sm:mx-4 sm:rounded-xl sm:p-6">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Give Coupon</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
               Select a coupon to apply to{" "}
@@ -283,8 +279,8 @@ export function AdminUserTable({ domain, plans, coupons, compact }: AdminUserTab
           : [];
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="mx-4 w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center">
+            <div className="w-full max-w-md rounded-t-2xl border border-gray-200 bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-xl dark:border-gray-700 dark:bg-gray-900 sm:mx-4 sm:rounded-xl sm:p-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Override Plan</h3>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
                 Override the plan for <strong>{targetUser?.email}</strong>
@@ -331,74 +327,76 @@ export function AdminUserTable({ domain, plans, coupons, compact }: AdminUserTab
         );
       })()}
 
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-100 dark:border-gray-800">
-            <th className={clsx("px-4 text-left font-medium text-gray-500 dark:text-gray-400", py)}>User</th>
-            <th className={clsx("hidden sm:table-cell px-4 text-left font-medium text-gray-500 dark:text-gray-400", py)}>Plan</th>
-            <th className={clsx("hidden sm:table-cell px-4 text-left font-medium text-gray-500 dark:text-gray-400", py)}>Status</th>
-            <th className={clsx("hidden md:table-cell px-4 text-left font-medium text-gray-500 dark:text-gray-400", py)}>Coupon</th>
-            <th className={clsx("hidden md:table-cell px-4 text-left font-medium text-gray-500 dark:text-gray-400", py)}>Joined</th>
-            <th className={clsx("px-4 text-right font-medium text-gray-500 dark:text-gray-400", py)}><span className="sr-only">Actions</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map((user) => (
-            <tr key={user.id} className="border-b border-gray-50 last:border-0 dark:border-gray-800/50">
-              <td className={clsx("px-4", py)}>
-                <div className="font-medium text-gray-900 dark:text-white">
-                  {user.displayName || user.email}
-                  {user.isAdmin && (
-                    <span className="ml-1.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                      ADMIN
-                    </span>
-                  )}
-                </div>
-                {user.displayName && (
-                  <div className="text-xs text-gray-500 dark:text-gray-400">{user.email}</div>
-                )}
-                {!domain && user.companyDealDomain && (
-                  <div className="text-xs text-gray-400 dark:text-gray-500">{user.companyDealDomain}</div>
-                )}
-                <div className="mt-1 flex flex-wrap items-center gap-2 sm:hidden">
-                  <span className="text-xs text-gray-500 dark:text-gray-400">{user.planName || "No plan"}</span>
-                  <StatusBadge status={user.subscriptionStatus} cancelAtPeriodEnd={user.cancelAtPeriodEnd} />
-                </div>
-              </td>
-              <td className={clsx("hidden sm:table-cell px-4 text-gray-700 dark:text-gray-300", py)}>{user.planName || "None"}</td>
-              <td className={clsx("hidden sm:table-cell px-4", py)}>
-                <StatusBadge status={user.subscriptionStatus} cancelAtPeriodEnd={user.cancelAtPeriodEnd} />
-              </td>
-              <td className={clsx("hidden md:table-cell px-4 text-gray-700 dark:text-gray-300", py)}>
-                {user.activeCoupon ? (
-                  <div>
-                    <span className="font-mono text-xs">{user.activeCoupon.code}</span>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                      until {format(new Date(user.activeCoupon.freeUntil), "dd MMM yyyy")}
-                    </div>
-                  </div>
-                ) : (
-                  "-"
-                )}
-              </td>
-              <td className={clsx("hidden md:table-cell px-4 text-gray-700 dark:text-gray-300", py)}>
-                {format(new Date(user.createdAt), "dd MMM yyyy")}
-              </td>
-              <td className={clsx("px-4 text-right", py)}>
-                <ActionsDropdown
-                  user={user}
-                  onCancelSubscription={handleCancelSubscription}
-                  onGiveCoupon={setGiveCouponUserId}
-                  onToggleAdmin={handleToggleAdmin}
-                  onOverridePlan={setOverridePlanUserId}
-                  onRevertPlan={handleRevertPlan}
-                  actionLoading={actionLoading}
-                />
-              </td>
+      <ScrollableTable>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-100 dark:border-gray-800">
+              <th className={clsx("px-4 text-left font-medium text-gray-500 dark:text-gray-400", py)}>User</th>
+              <th className={clsx("hidden sm:table-cell px-4 text-left font-medium text-gray-500 dark:text-gray-400", py)}>Plan</th>
+              <th className={clsx("hidden sm:table-cell px-4 text-left font-medium text-gray-500 dark:text-gray-400", py)}>Status</th>
+              <th className={clsx("hidden md:table-cell px-4 text-left font-medium text-gray-500 dark:text-gray-400", py)}>Coupon</th>
+              <th className={clsx("hidden md:table-cell px-4 text-left font-medium text-gray-500 dark:text-gray-400", py)}>Joined</th>
+              <th className={clsx("px-4 text-right font-medium text-gray-500 dark:text-gray-400", py)}><span className="sr-only">Actions</span></th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {users.map((user) => (
+              <tr key={user.id} className="border-b border-gray-50 last:border-0 dark:border-gray-800/50">
+                <td className={clsx("px-4", py)}>
+                  <div className="font-medium text-gray-900 dark:text-white">
+                    {user.displayName || user.email}
+                    {user.isAdmin && (
+                      <span className="ml-1.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                        ADMIN
+                      </span>
+                    )}
+                  </div>
+                  {user.displayName && (
+                    <div className="text-xs text-gray-500 dark:text-gray-400">{user.email}</div>
+                  )}
+                  {!domain && user.companyDealDomain && (
+                    <div className="text-xs text-gray-400 dark:text-gray-500">{user.companyDealDomain}</div>
+                  )}
+                  <div className="mt-1 flex flex-wrap items-center gap-2 sm:hidden">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{user.planName || "No plan"}</span>
+                    <StatusBadge status={user.subscriptionStatus} cancelAtPeriodEnd={user.cancelAtPeriodEnd} />
+                  </div>
+                </td>
+                <td className={clsx("hidden sm:table-cell px-4 text-gray-700 dark:text-gray-300", py)}>{user.planName || "None"}</td>
+                <td className={clsx("hidden sm:table-cell px-4", py)}>
+                  <StatusBadge status={user.subscriptionStatus} cancelAtPeriodEnd={user.cancelAtPeriodEnd} />
+                </td>
+                <td className={clsx("hidden md:table-cell px-4 text-gray-700 dark:text-gray-300", py)}>
+                  {user.activeCoupon ? (
+                    <div>
+                      <span className="font-mono text-xs">{user.activeCoupon.code}</span>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        until {format(new Date(user.activeCoupon.freeUntil), "dd MMM yyyy")}
+                      </div>
+                    </div>
+                  ) : (
+                    "-"
+                  )}
+                </td>
+                <td className={clsx("hidden md:table-cell px-4 text-gray-700 dark:text-gray-300", py)}>
+                  {format(new Date(user.createdAt), "dd MMM yyyy")}
+                </td>
+                <td className={clsx("px-4 text-right", py)}>
+                  <ActionsDropdown
+                    user={user}
+                    onCancelSubscription={handleCancelSubscription}
+                    onGiveCoupon={setGiveCouponUserId}
+                    onToggleAdmin={handleToggleAdmin}
+                    onOverridePlan={setOverridePlanUserId}
+                    onRevertPlan={handleRevertPlan}
+                    actionLoading={actionLoading}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ScrollableTable>
     </>
   );
 }

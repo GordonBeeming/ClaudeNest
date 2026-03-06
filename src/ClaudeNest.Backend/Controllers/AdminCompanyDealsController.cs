@@ -1,6 +1,7 @@
 using ClaudeNest.Backend.Auth;
 using ClaudeNest.Backend.Data;
 using ClaudeNest.Backend.Data.Entities;
+using ClaudeNest.Backend.Models;
 using ClaudeNest.Shared.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,7 +13,7 @@ namespace ClaudeNest.Backend.Controllers;
 [Route("api/admin/company-deals")]
 [Authorize]
 [AdminRequired]
-public class AdminCompanyDealsController(NestDbContext db, TimeProvider timeProvider) : ControllerBase
+public class AdminCompanyDealsController(NestDbContext db, TimeProvider timeProvider, ILogger<AdminCompanyDealsController> logger) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> ListDeals()
@@ -82,6 +83,8 @@ public class AdminCompanyDealsController(NestDbContext db, TimeProvider timeProv
         db.CompanyDeals.Add(deal);
         await db.SaveChangesAsync();
 
+        logger.LogInformation("Admin created company deal for domain {Domain} with plan {PlanId}", domain, request.PlanId);
+
         return Ok(new
         {
             deal.Id,
@@ -124,6 +127,8 @@ public class AdminCompanyDealsController(NestDbContext db, TimeProvider timeProv
 
         await db.SaveChangesAsync();
 
+        logger.LogInformation("Admin updated company deal {DealId} to plan {PlanId}", id, request.PlanId);
+
         return Ok(new
         {
             deal.Id,
@@ -162,6 +167,8 @@ public class AdminCompanyDealsController(NestDbContext db, TimeProvider timeProv
 
         await db.SaveChangesAsync();
 
+        logger.LogInformation("Admin deactivated company deal {DealId}", id);
+
         return Ok(new
         {
             deal.Id,
@@ -171,6 +178,3 @@ public class AdminCompanyDealsController(NestDbContext db, TimeProvider timeProv
         });
     }
 }
-
-public record CreateCompanyDealRequest(string Domain, Guid PlanId);
-public record UpdateCompanyDealRequest(Guid PlanId);

@@ -2,16 +2,19 @@ using System.Security.Cryptography;
 using System.Text;
 using ClaudeNest.Backend.Data;
 using ClaudeNest.Backend.Data.Entities;
+using ClaudeNest.Backend.Extensions;
+using ClaudeNest.Backend.Models;
 using ClaudeNest.Shared.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClaudeNest.Backend.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class PairingController(NestDbContext db, TimeProvider timeProvider) : ControllerBase
+public class PairingController(NestDbContext db, TimeProvider timeProvider, ILogger<PairingController> logger) : ControllerBase
 {
     /// <summary>
     /// Web client calls this to generate a pairing token for a new agent.
@@ -67,6 +70,7 @@ public class PairingController(NestDbContext db, TimeProvider timeProvider) : Co
     /// </summary>
     [HttpPost("exchange")]
     [AllowAnonymous]
+    [EnableRateLimiting("pairing")]
     public async Task<IActionResult> ExchangePairingToken([FromBody] ExchangeRequest request)
     {
         var tokenHash = SHA256.HashData(Encoding.UTF8.GetBytes(request.Token));
@@ -81,6 +85,8 @@ public class PairingController(NestDbContext db, TimeProvider timeProvider) : Co
 
         if (pairingToken is null)
         {
+            logger.LogWarning("Pairing exchange failed: invalid or expired token from {IP}",
+                HttpContext.GetClientIp());
             return BadRequest("Invalid or expired pairing token");
         }
 
@@ -133,6 +139,8 @@ public class PairingController(NestDbContext db, TimeProvider timeProvider) : Co
 
         await db.SaveChangesAsync();
 
+        logger.LogInformation("Agent paired successfully: AgentId={AgentId} via pairing token", agent.Id);
+
         return Ok(new
         {
             agentId = agent.Id,
@@ -140,5 +148,3 @@ public class PairingController(NestDbContext db, TimeProvider timeProvider) : Co
         });
     }
 }
-
-public record ExchangeRequest(string Token, string? AgentName, string? Hostname, string? OS);

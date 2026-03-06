@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using ClaudeNest.Backend.Data;
 using ClaudeNest.Backend.Data.Entities;
+using ClaudeNest.Backend.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -122,11 +123,4 @@ public partial class FolderPreferencesController(NestDbContext db, TimeProvider 
 
         return NoContent();
     }
-}
-
-public class UpsertFolderPreferenceRequest
-{
-    public required string Path { get; set; }
-    public bool IsFavorite { get; set; }
-    public string? Color { get; set; }
 }

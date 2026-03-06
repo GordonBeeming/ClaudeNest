@@ -1,5 +1,6 @@
 using ClaudeNest.Backend.Auth;
 using ClaudeNest.Backend.Data;
+using ClaudeNest.Backend.Models;
 using ClaudeNest.Backend.Stripe;
 using ClaudeNest.Shared.Enums;
 using Microsoft.AspNetCore.Authorization;
@@ -12,7 +13,7 @@ namespace ClaudeNest.Backend.Controllers;
 [Route("api/admin/users")]
 [Authorize]
 [AdminRequired]
-public class AdminUsersController(NestDbContext db, IStripeService stripeService) : ControllerBase
+public class AdminUsersController(NestDbContext db, IStripeService stripeService, ILogger<AdminUsersController> logger) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> ListUsers(
@@ -134,6 +135,8 @@ public class AdminUsersController(NestDbContext db, IStripeService stripeService
 
         await db.SaveChangesAsync();
 
+        logger.LogInformation("Admin cancelled subscription for user {UserId}", id);
+
         return Ok(await BuildUserResponseAsync(user));
     }
 
@@ -162,6 +165,8 @@ public class AdminUsersController(NestDbContext db, IStripeService stripeService
 
         user.IsAdmin = !user.IsAdmin;
         await db.SaveChangesAsync();
+
+        logger.LogInformation("Admin {CallerAuth0Id} toggled admin for user {UserId} to {IsAdmin}", callerAuth0Id, id, user.IsAdmin);
 
         return Ok(await BuildUserResponseAsync(user));
     }
@@ -210,6 +215,8 @@ public class AdminUsersController(NestDbContext db, IStripeService stripeService
         }
 
         await db.SaveChangesAsync();
+
+        logger.LogInformation("Admin gave coupon {CouponId} to user {UserId}", request.CouponId, id);
 
         // Reload to get updated coupon data
         await db.Entry(redemption).Reference(r => r.Coupon).LoadAsync();
@@ -261,6 +268,8 @@ public class AdminUsersController(NestDbContext db, IStripeService stripeService
 
         await db.SaveChangesAsync();
 
+        logger.LogInformation("Admin overrode plan for user {UserId} to plan {PlanId}", id, request.PlanId);
+
         // Reload plan navigation property
         await db.Entry(user.Account).Reference(a => a.Plan).LoadAsync();
 
@@ -299,6 +308,8 @@ public class AdminUsersController(NestDbContext db, IStripeService stripeService
         user.Account.PlanId = deal.PlanId;
 
         await db.SaveChangesAsync();
+
+        logger.LogInformation("Admin reverted plan for user {UserId} to company deal plan", id);
 
         // Reload plan navigation property
         await db.Entry(user.Account).Reference(a => a.Plan).LoadAsync();
@@ -347,6 +358,3 @@ public class AdminUsersController(NestDbContext db, IStripeService stripeService
         };
     }
 }
-
-public record GiveCouponRequest(Guid CouponId);
-public record OverridePlanRequest(Guid PlanId);

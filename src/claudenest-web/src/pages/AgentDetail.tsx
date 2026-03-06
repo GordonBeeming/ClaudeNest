@@ -381,7 +381,7 @@ export function AgentDetail() {
         All Agents
       </Link>
 
-      <div className="mt-4 flex items-start justify-between">
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
@@ -400,19 +400,19 @@ export function AgentDetail() {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {agent.isOnline && agent.version && (
             <button
               onClick={handleTriggerUpdate}
               disabled={updatingAgent}
-              className="flex items-center gap-1.5 rounded-lg border border-nest-200 px-3 py-1.5 text-sm font-medium text-nest-600 hover:bg-nest-50 disabled:opacity-50 dark:border-nest-800 dark:text-nest-400 dark:hover:bg-nest-950/30"
+              className="flex items-center gap-1.5 rounded-lg border border-nest-200 px-3 py-2.5 sm:py-1.5 text-sm font-medium text-nest-600 hover:bg-nest-50 disabled:opacity-50 dark:border-nest-800 dark:text-nest-400 dark:hover:bg-nest-950/30"
             >
               <Download className="h-4 w-4" />
               {updatingAgent ? "Updating..." : "Update"}
             </button>
           )}
           {confirmRemove ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <span className="text-sm text-red-600 dark:text-red-400">
                 {agent.isOnline
                   ? "This will stop all sessions and deregister the agent."
@@ -421,14 +421,14 @@ export function AgentDetail() {
               <button
                 onClick={handleRemoveAgent}
                 disabled={removing}
-                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                className="rounded-lg bg-red-600 px-3 py-2.5 sm:py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
               >
                 {removing ? "Removing..." : "Confirm"}
               </button>
               <button
                 onClick={() => setConfirmRemove(false)}
                 disabled={removing}
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+                className="rounded-lg border border-gray-300 px-3 py-2.5 sm:py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
               >
                 Cancel
               </button>
@@ -436,7 +436,7 @@ export function AgentDetail() {
           ) : (
             <button
               onClick={() => setConfirmRemove(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30"
+              className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2.5 sm:py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30"
             >
               <Trash2 className="h-4 w-4" />
               Remove

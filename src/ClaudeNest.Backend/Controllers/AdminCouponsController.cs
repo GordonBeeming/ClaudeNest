@@ -1,6 +1,7 @@
 using ClaudeNest.Backend.Auth;
 using ClaudeNest.Backend.Data;
 using ClaudeNest.Backend.Data.Entities;
+using ClaudeNest.Backend.Models;
 using ClaudeNest.Backend.Stripe;
 using ClaudeNest.Shared.Enums;
 using Microsoft.AspNetCore.Authorization;
@@ -13,7 +14,7 @@ namespace ClaudeNest.Backend.Controllers;
 [Route("api/admin/coupons")]
 [Authorize]
 [AdminRequired]
-public class AdminCouponsController(NestDbContext db, IStripeService stripeService) : ControllerBase
+public class AdminCouponsController(NestDbContext db, IStripeService stripeService, ILogger<AdminCouponsController> logger) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> ListCoupons()
@@ -131,6 +132,8 @@ public class AdminCouponsController(NestDbContext db, IStripeService stripeServi
         db.Coupons.Add(coupon);
         await db.SaveChangesAsync();
 
+        logger.LogInformation("Admin created coupon {Code} for plan {PlanId}", normalizedCode, request.PlanId);
+
         return Ok(new
         {
             coupon.Id,
@@ -166,6 +169,8 @@ public class AdminCouponsController(NestDbContext db, IStripeService stripeServi
             coupon.IsActive = request.IsActive.Value;
 
         await db.SaveChangesAsync();
+
+        logger.LogInformation("Admin updated coupon {CouponId}", id);
 
         return Ok(new
         {
@@ -209,19 +214,8 @@ public class AdminCouponsController(NestDbContext db, IStripeService stripeServi
 
         await db.SaveChangesAsync();
 
+        logger.LogInformation("Admin deactivated coupon {CouponId}", id);
+
         return Ok(new { coupon.Id, coupon.IsActive });
     }
 }
-
-public record CreateCouponRequest(
-    string Code,
-    Guid PlanId,
-    int FreeMonths,
-    int MaxRedemptions,
-    DateTimeOffset? ExpiresAt,
-    DiscountType DiscountType = DiscountType.FreeMonths,
-    decimal? PercentOff = null,
-    int? AmountOffCents = null,
-    int? FreeDays = null,
-    int? DurationMonths = null);
-public record UpdateCouponRequest(int? MaxRedemptions, DateTimeOffset? ExpiresAt, bool? IsActive);

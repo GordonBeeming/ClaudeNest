@@ -1,11 +1,12 @@
 using System.Security.Cryptography;
 using System.Text;
 using ClaudeNest.Backend.Data;
+using ClaudeNest.Backend.Extensions;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClaudeNest.Backend.Auth;
 
-public class AgentAuthMiddleware(RequestDelegate next)
+public class AgentAuthMiddleware(RequestDelegate next, ILogger<AgentAuthMiddleware> logger)
 {
     private static readonly TimeSpan TimestampTolerance = TimeSpan.FromMinutes(5);
 
@@ -28,6 +29,8 @@ public class AgentAuthMiddleware(RequestDelegate next)
 
         if (!Guid.TryParse(agentIdHeader, out var agentId))
         {
+            logger.LogWarning("Agent auth failed: invalid AgentId format '{AgentId}' from {IP}",
+                agentIdHeader, context.GetClientIp());
             context.Response.StatusCode = 401;
             return;
         }
@@ -60,6 +63,8 @@ public class AgentAuthMiddleware(RequestDelegate next)
         // Validate timestamp freshness
         if (!DateTimeOffset.TryParse(timestampHeader, out var timestamp))
         {
+            logger.LogWarning("Agent auth failed: invalid timestamp for agent {AgentId} from {IP}",
+                agentId, context.GetClientIp());
             context.Response.StatusCode = 401;
             return;
         }
@@ -67,6 +72,8 @@ public class AgentAuthMiddleware(RequestDelegate next)
         var now = timeProvider.GetUtcNow();
         if (Math.Abs((now - timestamp).TotalMinutes) > TimestampTolerance.TotalMinutes)
         {
+            logger.LogWarning("Agent auth failed: stale timestamp for agent {AgentId} from {IP} (drift: {DriftMinutes:F1}m)",
+                agentId, context.GetClientIp(), (now - timestamp).TotalMinutes);
             context.Response.StatusCode = 401;
             return;
         }
@@ -79,6 +86,8 @@ public class AgentAuthMiddleware(RequestDelegate next)
         }
         catch (FormatException)
         {
+            logger.LogWarning("Agent auth failed: malformed signature for agent {AgentId} from {IP}",
+                agentId, context.GetClientIp());
             context.Response.StatusCode = 401;
             return;
         }
@@ -90,6 +99,8 @@ public class AgentAuthMiddleware(RequestDelegate next)
 
         if (credential is null)
         {
+            logger.LogWarning("Agent auth failed: no active credential for agent {AgentId} from {IP}",
+                agentId, context.GetClientIp());
             context.Response.StatusCode = 401;
             return;
         }
@@ -101,6 +112,8 @@ public class AgentAuthMiddleware(RequestDelegate next)
 
         if (!CryptographicOperations.FixedTimeEquals(expectedSignature, providedSignature))
         {
+            logger.LogWarning("Agent auth failed: HMAC signature mismatch for agent {AgentId} from {IP}",
+                agentId, context.GetClientIp());
             context.Response.StatusCode = 401;
             return;
         }
@@ -125,6 +138,8 @@ public class AgentAuthMiddleware(RequestDelegate next)
 
         if (credential is null || !CryptographicOperations.FixedTimeEquals(credential.SecretHash, secretHash))
         {
+            logger.LogWarning("Agent auth failed: invalid legacy secret for agent {AgentId} from {IP}",
+                agentId, context.GetClientIp());
             context.Response.StatusCode = 401;
             return;
         }

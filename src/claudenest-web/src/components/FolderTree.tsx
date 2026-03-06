@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useSignalRContext } from "../contexts/SignalRContext";
+import { useClickOutside } from "../hooks/useClickOutside";
 import type { DirectoryListingResult, FolderPreference } from "../types";
 
 const PRESET_COLORS = [
@@ -52,16 +53,7 @@ function ColorPicker({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [onClose]);
+  useClickOutside(ref, onClose);
 
   return (
     <div
@@ -78,7 +70,7 @@ function ColorPicker({
               onClose();
             }}
             className={clsx(
-              "h-6 w-6 rounded-full border-2 transition-transform hover:scale-110",
+              "h-8 w-8 sm:h-6 sm:w-6 rounded-full border-2 transition-transform hover:scale-110",
               currentColor === color
                 ? "border-gray-900 dark:border-white"
                 : "border-transparent",
@@ -93,7 +85,7 @@ function ColorPicker({
             onSelect(null);
             onClose();
           }}
-          className="mt-1.5 flex w-full items-center justify-center gap-1 rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+          className="mt-1.5 flex w-full items-center justify-center gap-1 rounded-md px-3 py-2 sm:px-2 sm:py-1 text-xs text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
         >
           <X className="h-3 w-3" />
           Reset
@@ -181,12 +173,11 @@ function FolderNode({
     <div>
       <div
         className={clsx(
-          "group flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-800",
+          "group flex cursor-pointer items-center gap-1 rounded-lg px-2 py-2.5 sm:py-1.5 hover:bg-gray-100 dark:hover:bg-gray-800",
           expanded && "bg-gray-50 dark:bg-gray-800/50",
         )}
         style={{ paddingLeft: `${depth * 20 + 8}px` }}
         onClick={handleToggle}
-        onMouseLeave={() => setShowColorPicker(false)}
       >
         <span className="shrink-0 text-gray-400">
           {loading ? (
@@ -212,15 +203,15 @@ function FolderNode({
 
         <span className="min-w-0 truncate text-sm">{name}</span>
 
-        {/* Hover action buttons */}
-          <div className="ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        {/* Action buttons — always visible on touch, hover-reveal on desktop */}
+          <div className="ml-auto flex shrink-0 items-center gap-1 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100">
             {onToggleFavorite && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleFavorite(path, pref);
                 }}
-                className="rounded-md p-0.5 text-gray-400 hover:text-amber-500 dark:text-gray-500 dark:hover:text-amber-400"
+                className="rounded-md p-2 sm:p-0.5 text-gray-400 hover:text-amber-500 dark:text-gray-500 dark:hover:text-amber-400"
                 title={pref?.isFavorite ? "Remove from favorites" : "Add to favorites"}
               >
                 {pref?.isFavorite ? (
@@ -238,7 +229,7 @@ function FolderNode({
                     e.stopPropagation();
                     setShowColorPicker((s) => !s);
                   }}
-                  className="rounded-md p-0.5 text-gray-400 hover:text-nest-500 dark:text-gray-500 dark:hover:text-nest-400"
+                  className="rounded-md p-2 sm:p-0.5 text-gray-400 hover:text-nest-500 dark:text-gray-500 dark:hover:text-nest-400"
                   title="Set folder color"
                 >
                   <Palette className="h-3.5 w-3.5" />
@@ -259,7 +250,7 @@ function FolderNode({
                   e.stopPropagation();
                   onLaunch(path);
                 }}
-                className="flex items-center gap-1 rounded-md bg-nest-500 px-2 py-0.5 text-xs font-medium text-white hover:bg-nest-600"
+                className="flex items-center gap-1 rounded-md bg-nest-500 px-3 py-2 sm:px-2 sm:py-0.5 text-xs font-medium text-white hover:bg-nest-600"
               >
                 <Play className="h-3 w-3" />
                 Launch

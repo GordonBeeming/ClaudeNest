@@ -8,6 +8,7 @@ import type { AccountInfo, Agent, LedgerEntry, PaginatedResult } from "../types"
 import { format } from "date-fns";
 import { AgentCredentialManager } from "../components/AgentCredentialManager";
 import { Select } from "../components/Select";
+import { ScrollableTable } from "../components/ScrollableTable";
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
@@ -396,7 +397,7 @@ export function AccountPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400">No billing history yet</p>
         ) : (
           <>
-            <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
+            <ScrollableTable>
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900">
@@ -428,7 +429,7 @@ export function AccountPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollableTable>
             {ledger.items.length < ledger.totalCount && (
               <button
                 onClick={loadMoreLedger}

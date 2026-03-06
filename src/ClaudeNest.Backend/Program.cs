@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using ClaudeNest.Backend.Auth;
 using ClaudeNest.Backend.Data;
 using ClaudeNest.Backend.Hubs;
@@ -8,6 +9,8 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
+using ClaudeNest.Backend.Extensions;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -104,7 +107,57 @@ builder.Services.AddCors(options =>
     });
 });
 
+var rateLimitConfig = builder.Configuration.GetSection("RateLimiting");
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("pairing", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.GetClientIp(),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = rateLimitConfig.GetValue("Pairing:PermitLimit", 5),
+                Window = TimeSpan.FromMinutes(rateLimitConfig.GetValue("Pairing:WindowMinutes", 1))
+            }));
+    options.AddPolicy("installScripts", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.GetClientIp(),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = rateLimitConfig.GetValue("InstallScripts:PermitLimit", 30),
+                Window = TimeSpan.FromMinutes(rateLimitConfig.GetValue("InstallScripts:WindowMinutes", 1))
+            }));
+    options.OnRejected = async (context, token) =>
+    {
+        var rateLimitLogger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+        rateLimitLogger.LogWarning("Rate limit exceeded for IP {IP} on {Path}",
+            context.HttpContext.GetClientIp(),
+            context.HttpContext.Request.Path);
+
+        context.HttpContext.Response.StatusCode = 429;
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsJsonAsync(
+            new { message = "Too many requests. Please try again later." },
+            cancellationToken: token);
+    };
+});
+
 var app = builder.Build();
+
+app.UseExceptionHandler(exceptionApp =>
+{
+    exceptionApp.Run(async context =>
+    {
+        var exceptionFeature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
+        if (exceptionFeature is not null)
+        {
+            var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogError(exceptionFeature.Error, "Unhandled exception");
+        }
+        context.Response.StatusCode = 500;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new { message = "An unexpected error occurred" });
+    });
+});
 
 // Database initialization
 if (app.Environment.IsDevelopment())
@@ -170,17 +223,24 @@ else
 
 app.MapDefaultEndpoints();
 
-// Forward headers from reverse proxy (Cloudflare Tunnel / Azure Container Apps)
+// Forward headers from reverse proxy (Cloudflare Tunnel / Azure Container Apps).
+// NOTE: For real client IPs (rate limiting, logging), we use the CF-Connecting-IP header
+// via HttpContext.GetClientIp() — this is set by Cloudflare's edge and cannot be spoofed.
+// X-Forwarded-For is only used here for protocol/host detection, not client IP resolution.
 var forwardedHeadersOptions = new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
 };
-// Trust all proxies — traffic arrives via Cloudflare Tunnel on a private VNet
+// Trust all proxies — traffic arrives via Cloudflare Tunnel on a private VNet.
+// SECURITY: This is safe because the backend is NOT directly exposed to the internet;
+// it sits behind Cloudflare Tunnel within an Azure VNet. If the deployment model changes
+// (e.g., direct internet exposure), restrict KnownProxies/KnownIPNetworks to trusted IPs only.
 forwardedHeadersOptions.KnownIPNetworks.Clear();
 forwardedHeadersOptions.KnownProxies.Clear();
 app.UseForwardedHeaders(forwardedHeadersOptions);
 
 app.UseCors();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseMiddleware<AgentAuthMiddleware>();
 app.UseAuthorization();
@@ -189,3 +249,6 @@ app.MapControllers();
 app.MapHub<NestHub>("/hubs/nest");
 
 app.Run();
+
+// Expose Program class for WebApplicationFactory in integration tests
+public partial class Program;
