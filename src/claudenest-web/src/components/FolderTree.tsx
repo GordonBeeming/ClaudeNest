@@ -103,6 +103,7 @@ interface FolderNodeProps {
   onLaunch: (path: string) => void;
   activeSessionPaths: string[];
   atSessionLimit?: boolean;
+  isOnline?: boolean;
   preferences?: Map<string, FolderPreference>;
   onToggleFavorite?: (path: string, currentPref: FolderPreference | undefined) => void;
   onSetColor?: (path: string, color: string | null, currentPref: FolderPreference | undefined) => void;
@@ -117,6 +118,7 @@ function FolderNode({
   onLaunch,
   activeSessionPaths,
   atSessionLimit,
+  isOnline = true,
   preferences,
   onToggleFavorite,
   onSetColor,
@@ -140,13 +142,14 @@ function FolderNode({
   );
 
   const handleToggle = useCallback(() => {
+    if (!isOnline) return;
     if (!expanded && children === null) {
       setLoading(true);
       setError(null);
       requestDirectoryListing(agentId, path);
     }
     setExpanded((e) => !e);
-  }, [expanded, children, agentId, path, requestDirectoryListing]);
+  }, [expanded, children, agentId, path, requestDirectoryListing, isOnline]);
 
   // Auto-expand: trigger directory listing on mount
   useEffect(() => {
@@ -244,7 +247,13 @@ function FolderNode({
               </div>
             )}
 
-            {!blocked && !atSessionLimit && (
+            {!isOnline && (
+              <span className="flex items-center gap-1 rounded-md text-xs font-medium text-red-500 dark:text-red-400">
+                Offline
+              </span>
+            )}
+
+            {isOnline && !blocked && !atSessionLimit && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -257,14 +266,14 @@ function FolderNode({
               </button>
             )}
 
-            {!blocked && atSessionLimit && (
+            {isOnline && !blocked && atSessionLimit && (
               <span className="flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs text-amber-600 dark:bg-amber-950/50 dark:text-amber-400">
                 <Ban className="h-3 w-3" />
                 Session limit reached
               </span>
             )}
 
-            {blocked && (
+            {isOnline && blocked && (
               <span className="flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
                 <Ban className="h-3 w-3" />
                 Session active
@@ -302,6 +311,7 @@ function FolderNode({
                 onLaunch={onLaunch}
                 activeSessionPaths={activeSessionPaths}
                 atSessionLimit={atSessionLimit}
+                isOnline={isOnline}
                 preferences={preferences}
                 onToggleFavorite={onToggleFavorite}
                 onSetColor={onSetColor}
@@ -319,6 +329,7 @@ interface FolderTreeProps {
   allowedPaths: string[];
   activeSessionPaths: string[];
   atSessionLimit?: boolean;
+  isOnline?: boolean;
   onLaunch: (path: string) => void;
   preferences?: Map<string, FolderPreference>;
   onToggleFavorite?: (path: string, currentPref: FolderPreference | undefined) => void;
@@ -330,6 +341,7 @@ export function FolderTree({
   allowedPaths,
   activeSessionPaths,
   atSessionLimit,
+  isOnline,
   onLaunch,
   preferences,
   onToggleFavorite,
@@ -355,6 +367,7 @@ export function FolderTree({
           onLaunch={onLaunch}
           activeSessionPaths={activeSessionPaths}
           atSessionLimit={atSessionLimit}
+          isOnline={isOnline}
           preferences={preferences}
           onToggleFavorite={onToggleFavorite}
           onSetColor={onSetColor}
@@ -369,6 +382,7 @@ interface FavoriteFolderTreeProps {
   favoritePaths: string[];
   activeSessionPaths: string[];
   atSessionLimit?: boolean;
+  isOnline?: boolean;
   onLaunch: (path: string) => void;
   preferences: Map<string, FolderPreference>;
   onToggleFavorite: (path: string, currentPref: FolderPreference | undefined) => void;
@@ -380,6 +394,7 @@ export function FavoriteFolderTree({
   favoritePaths,
   activeSessionPaths,
   atSessionLimit,
+  isOnline,
   onLaunch,
   preferences,
   onToggleFavorite,
@@ -408,6 +423,7 @@ export function FavoriteFolderTree({
             onLaunch={onLaunch}
             activeSessionPaths={activeSessionPaths}
             atSessionLimit={atSessionLimit}
+            isOnline={isOnline}
             preferences={preferences}
             onToggleFavorite={onToggleFavorite}
             onSetColor={onSetColor}
