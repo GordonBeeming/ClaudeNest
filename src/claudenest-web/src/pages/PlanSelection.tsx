@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Bird } from "lucide-react";
 import { clsx } from "clsx";
@@ -42,21 +42,7 @@ export function PlanSelection() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Auto-select plan from localStorage intent (set by homepage)
-  useEffect(() => {
-    if (intentHandled.current || loading || plans.length === 0) return;
-    const intentPlanId = getPlanIntent();
-    if (intentPlanId) {
-      intentHandled.current = true;
-      clearPlanIntent();
-      const matchingPlan = plans.find((p) => p.id === intentPlanId);
-      if (matchingPlan) {
-        handleSelect(intentPlanId);
-      }
-    }
-  }, [loading, plans]);
-
-  const handleSelect = async (planId: string) => {
+  const handleSelect = useCallback(async (planId: string) => {
     setSelecting(planId);
     try {
       const validCoupon = couponResult?.valid ? couponResult.code : undefined;
@@ -72,7 +58,21 @@ export function PlanSelection() {
     } catch {
       setSelecting(null);
     }
-  };
+  }, [couponResult, navigate, updateAccount]);
+
+  // Auto-select plan from localStorage intent (set by homepage)
+  useEffect(() => {
+    if (intentHandled.current || loading || plans.length === 0) return;
+    const intentPlanId = getPlanIntent();
+    if (intentPlanId) {
+      intentHandled.current = true;
+      clearPlanIntent();
+      const matchingPlan = plans.find((p) => p.id === intentPlanId);
+      if (matchingPlan) {
+        handleSelect(intentPlanId);
+      }
+    }
+  }, [loading, plans, handleSelect]);
 
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) return;

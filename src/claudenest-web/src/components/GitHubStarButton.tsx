@@ -6,18 +6,26 @@ const GITHUB_URL = `https://github.com/${GITHUB_REPO}`;
 const CACHE_KEY = "claudenest_gh_stars";
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
-export function GitHubStarButton() {
-  const [stars, setStars] = useState<number | null>(null);
-
-  useEffect(() => {
+function getCachedStars(): number | null {
+  try {
     const cached = localStorage.getItem(CACHE_KEY);
     if (cached) {
       const { count, ts } = JSON.parse(cached);
       if (Date.now() - ts < CACHE_TTL) {
-        setStars(count);
-        return;
+        return count;
       }
     }
+  } catch {
+    // ignore malformed cache
+  }
+  return null;
+}
+
+export function GitHubStarButton() {
+  const [stars, setStars] = useState<number | null>(getCachedStars);
+
+  useEffect(() => {
+    if (getCachedStars() !== null) return;
 
     fetch(`https://api.github.com/repos/${GITHUB_REPO}`)
       .then((res) => res.json())
