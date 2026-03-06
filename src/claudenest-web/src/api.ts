@@ -13,6 +13,14 @@ export function setOnAuthFailure(handler: () => void) {
   _onAuthFailure = handler;
 }
 
+export async function getAccessToken(): Promise<string> {
+  if (_getAccessToken) {
+    const token = await _getAccessToken();
+    if (token) return token;
+  }
+  return "";
+}
+
 async function apiFetch<T>(
   path: string,
   options?: RequestInit,

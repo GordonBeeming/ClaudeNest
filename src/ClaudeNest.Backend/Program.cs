@@ -44,6 +44,20 @@ else
             options.Authority = builder.Configuration["Auth0:Authority"];
             options.Audience = builder.Configuration["Auth0:Audience"];
             options.MapInboundClaims = false;
+            options.Events = new JwtBearerEvents
+            {
+                OnMessageReceived = context =>
+                {
+                    // SignalR sends the access token as a query parameter for WebSocket connections
+                    var accessToken = context.Request.Query["access_token"];
+                    if (!string.IsNullOrEmpty(accessToken) &&
+                        context.HttpContext.Request.Path.StartsWithSegments("/hubs/nest"))
+                    {
+                        context.Token = accessToken;
+                    }
+                    return Task.CompletedTask;
+                }
+            };
         });
 }
 builder.Services.AddAuthorization();

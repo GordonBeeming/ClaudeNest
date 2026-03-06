@@ -6,6 +6,7 @@ import {
   LogLevel,
 } from "@microsoft/signalr";
 import type { DirectoryListingResult, SessionStatus } from "../types";
+import { getAccessToken } from "../api";
 
 export function useSignalR() {
   const connectionRef = useRef<HubConnection | null>(null);
@@ -13,7 +14,9 @@ export function useSignalR() {
 
   useEffect(() => {
     const connection = new HubConnectionBuilder()
-      .withUrl("/hubs/nest")
+      .withUrl("/hubs/nest", {
+        accessTokenFactory: getAccessToken,
+      })
       .withAutomaticReconnect([0, 1000, 5000, 10000, 30000])
       .configureLogging(LogLevel.Information)
       .build();
