@@ -144,6 +144,13 @@ public class AdminUsersControllerTests(ClaudeNestWebApplicationFactory factory) 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(body.GetProperty("isAdmin").GetBoolean());
+
+        // Verify database state
+        using var scope1 = factory.Services.CreateScope();
+        var db1 = scope1.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbUser = await db1.Users.FirstOrDefaultAsync(u => u.Id == target.Id);
+        Assert.NotNull(dbUser);
+        Assert.True(dbUser.IsAdmin);
     }
 
     [Fact]
@@ -178,6 +185,12 @@ public class AdminUsersControllerTests(ClaudeNestWebApplicationFactory factory) 
             new { CouponId = coupon.Id });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        // Verify database state
+        using var scope2 = factory.Services.CreateScope();
+        var db2 = scope2.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbRedemption = await db2.CouponRedemptions.FirstOrDefaultAsync(r => r.CouponId == coupon.Id && r.AccountId == target.AccountId);
+        Assert.NotNull(dbRedemption);
     }
 
     [Fact]
@@ -224,6 +237,13 @@ public class AdminUsersControllerTests(ClaudeNestWebApplicationFactory factory) 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Eagle", body.GetProperty("planName").GetString());
+
+        // Verify database state
+        using var scope3 = factory.Services.CreateScope();
+        var db3 = scope3.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbAccount3 = await db3.Accounts.FirstOrDefaultAsync(a => a.Id == target.AccountId);
+        Assert.NotNull(dbAccount3);
+        Assert.Equal(ClaudeNestWebApplicationFactory.EaglePlanId, dbAccount3.PlanId);
     }
 
     [Fact]
@@ -248,5 +268,12 @@ public class AdminUsersControllerTests(ClaudeNestWebApplicationFactory factory) 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Hawk", body.GetProperty("planName").GetString());
+
+        // Verify database state
+        using var scope4 = factory.Services.CreateScope();
+        var db4 = scope4.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbAccount4 = await db4.Accounts.FirstOrDefaultAsync(a => a.Id == target.AccountId);
+        Assert.NotNull(dbAccount4);
+        Assert.Equal(ClaudeNestWebApplicationFactory.HawkPlanId, dbAccount4.PlanId);
     }
 }

@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using ClaudeNest.Backend.Data;
 using ClaudeNest.Backend.IntegrationTests.Infrastructure;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ClaudeNest.Backend.IntegrationTests.Controllers;
 
@@ -78,6 +81,14 @@ public class FolderPreferencesControllerTests(ClaudeNestWebApplicationFactory fa
         Assert.Equal("/new/path", body.GetProperty("path").GetString());
         Assert.True(body.GetProperty("isFavorite").GetBoolean());
         Assert.Equal("#ff5733", body.GetProperty("color").GetString());
+
+        // Verify database state
+        using var scope1 = factory.Services.CreateScope();
+        var db1 = scope1.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbPref = await db1.UserFolderPreferences.FirstOrDefaultAsync(p => p.AgentId == agent.Id && p.Path == "/new/path");
+        Assert.NotNull(dbPref);
+        Assert.True(dbPref.IsFavorite);
+        Assert.Equal("#ff5733", dbPref.Color);
     }
 
     [Fact]
@@ -101,6 +112,14 @@ public class FolderPreferencesControllerTests(ClaudeNestWebApplicationFactory fa
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(body.GetProperty("isFavorite").GetBoolean());
         Assert.Equal("#aabbcc", body.GetProperty("color").GetString());
+
+        // Verify database state
+        using var scope2 = factory.Services.CreateScope();
+        var db2 = scope2.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbPref = await db2.UserFolderPreferences.FirstOrDefaultAsync(p => p.AgentId == agent.Id && p.Path == "/update/path");
+        Assert.NotNull(dbPref);
+        Assert.True(dbPref.IsFavorite);
+        Assert.Equal("#aabbcc", dbPref.Color);
     }
 
     [Fact]
@@ -157,6 +176,14 @@ public class FolderPreferencesControllerTests(ClaudeNestWebApplicationFactory fa
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        // Verify database state
+        using var scope3 = factory.Services.CreateScope();
+        var db3 = scope3.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbPref = await db3.UserFolderPreferences.FirstOrDefaultAsync(p => p.AgentId == agent.Id && p.Path == "/hex/path");
+        Assert.NotNull(dbPref);
+        Assert.False(dbPref.IsFavorite);
+        Assert.Equal("#AABBCC", dbPref.Color);
     }
 
     [Fact]
@@ -172,5 +199,11 @@ public class FolderPreferencesControllerTests(ClaudeNestWebApplicationFactory fa
         var response = await client.DeleteAsync($"/api/agents/{agent.Id}/folder-preferences/{pref.Id}");
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        // Verify database state
+        using var scope4 = factory.Services.CreateScope();
+        var db4 = scope4.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbPref = await db4.UserFolderPreferences.FirstOrDefaultAsync(p => p.Id == pref.Id);
+        Assert.Null(dbPref);
     }
 }

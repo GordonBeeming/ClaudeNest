@@ -71,7 +71,7 @@ public class AdminCompanyDealsController(NestDbContext db, TimeProvider timeProv
         if (await db.CompanyDeals.AnyAsync(d => d.Domain == domain))
             return BadRequest("A deal for this domain already exists");
 
-        var plan = await db.Plans.FindAsync(request.PlanId);
+        var plan = await db.Plans.FirstOrDefaultAsync(p => p.Id == request.PlanId);
         if (plan is null) return BadRequest("Invalid plan");
 
         var deal = new CompanyDeal
@@ -105,7 +105,7 @@ public class AdminCompanyDealsController(NestDbContext db, TimeProvider timeProv
         if (deal is null) return NotFound();
         if (!deal.IsActive) return BadRequest("Cannot edit an inactive deal");
 
-        var newPlan = await db.Plans.FindAsync(request.PlanId);
+        var newPlan = await db.Plans.FirstOrDefaultAsync(p => p.Id == request.PlanId);
         if (newPlan is null) return BadRequest("Invalid plan");
 
         var oldPlanId = deal.PlanId;

@@ -49,6 +49,13 @@ public class AccountControllerTests(ClaudeNestWebApplicationFactory factory) : I
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("New Name", body.GetProperty("displayName").GetString());
+
+        // Verify database state
+        using var scope1 = factory.Services.CreateScope();
+        var db1 = scope1.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbUser = await db1.Users.FirstOrDefaultAsync(u => u.Auth0UserId == user.Auth0UserId);
+        Assert.NotNull(dbUser);
+        Assert.Equal("New Name", dbUser.DisplayName);
     }
 
     [Fact]
@@ -90,6 +97,13 @@ public class AccountControllerTests(ClaudeNestWebApplicationFactory factory) : I
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("acceptEdits", body.GetProperty("permissionMode").GetString());
+
+        // Verify database state
+        using var scope2 = factory.Services.CreateScope();
+        var db2 = scope2.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbAccount = await db2.Accounts.FirstOrDefaultAsync(a => a.Users.Any(u => u.Auth0UserId == user.Auth0UserId));
+        Assert.NotNull(dbAccount);
+        Assert.Equal("acceptEdits", dbAccount.PermissionMode);
     }
 
     [Fact]
@@ -119,6 +133,14 @@ public class AccountControllerTests(ClaudeNestWebApplicationFactory factory) : I
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("local", body.GetProperty("action").GetString());
+
+        // Verify database state
+        using var scope3 = factory.Services.CreateScope();
+        var db3 = scope3.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbAccount3 = await db3.Accounts.FirstOrDefaultAsync(a => a.Users.Any(u => u.Auth0UserId == user.Auth0UserId));
+        Assert.NotNull(dbAccount3);
+        Assert.Equal(ClaudeNestWebApplicationFactory.RobinPlanId, dbAccount3.PlanId);
+        Assert.Equal(SubscriptionStatus.Active, dbAccount3.SubscriptionStatus);
     }
 
     [Fact]

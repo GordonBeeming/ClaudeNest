@@ -89,7 +89,7 @@ public class AdminCouponsController(NestDbContext db, IStripeService stripeServi
                 return BadRequest("Invalid discount type");
         }
 
-        var plan = await db.Plans.FindAsync(request.PlanId);
+        var plan = await db.Plans.FirstOrDefaultAsync(p => p.Id == request.PlanId);
         if (plan is null) return BadRequest("Invalid plan");
 
         var normalizedCode = request.Code.Trim().ToUpperInvariant();
@@ -159,7 +159,7 @@ public class AdminCouponsController(NestDbContext db, IStripeService stripeServi
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> UpdateCoupon(Guid id, [FromBody] UpdateCouponRequest request)
     {
-        var coupon = await db.Coupons.FindAsync(id);
+        var coupon = await db.Coupons.AsTracking().FirstOrDefaultAsync(c => c.Id == id);
         if (coupon is null) return NotFound();
 
         if (request.MaxRedemptions.HasValue)
@@ -196,7 +196,7 @@ public class AdminCouponsController(NestDbContext db, IStripeService stripeServi
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeactivateCoupon(Guid id)
     {
-        var coupon = await db.Coupons.FindAsync(id);
+        var coupon = await db.Coupons.AsTracking().FirstOrDefaultAsync(c => c.Id == id);
         if (coupon is null) return NotFound();
 
         coupon.IsActive = false;

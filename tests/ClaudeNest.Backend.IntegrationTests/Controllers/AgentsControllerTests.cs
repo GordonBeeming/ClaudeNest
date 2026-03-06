@@ -141,6 +141,15 @@ public class AgentsControllerTests(ClaudeNestWebApplicationFactory factory) : IC
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(body.GetProperty("secret").GetString()!.Length > 0);
         Assert.NotEqual(Guid.Empty, body.GetProperty("credentialId").GetGuid());
+
+        // Verify database state
+        var newCredentialId = body.GetProperty("credentialId").GetGuid();
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbCredential = await db.AgentCredentials.FirstOrDefaultAsync(c => c.Id == newCredentialId);
+        Assert.NotNull(dbCredential);
+        Assert.Equal(agent.Id, dbCredential.AgentId);
+        Assert.Null(dbCredential.RevokedAt);
     }
 
     [Fact]
@@ -213,6 +222,12 @@ public class AgentsControllerTests(ClaudeNestWebApplicationFactory factory) : IC
         var response = await client.DeleteAsync($"/api/agents/{agent.Id}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        // Verify the agent was NOT deleted (ownership check prevented it)
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbAgent = await db.Agents.FirstOrDefaultAsync(a => a.Id == agent.Id);
+        Assert.NotNull(dbAgent);
     }
 
     [Fact]

@@ -113,7 +113,7 @@ public static class DevDataSeeder
             await db.SaveChangesAsync();
 
             // Link the coupon as the Wren plan's default
-            var wrenPlan = await db.Plans.FindAsync(WrenPlanId);
+            var wrenPlan = await db.Plans.AsTracking().FirstOrDefaultAsync(p => p.Id == WrenPlanId);
             if (wrenPlan is not null)
             {
                 wrenPlan.DefaultCouponId = WrenTrialCouponId;

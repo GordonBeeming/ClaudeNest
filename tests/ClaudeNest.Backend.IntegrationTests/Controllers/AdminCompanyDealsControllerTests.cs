@@ -59,6 +59,16 @@ public class AdminCompanyDealsControllerTests(ClaudeNestWebApplicationFactory fa
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("acd-newdeal.com", body.GetProperty("domain").GetString());
         Assert.Equal("Eagle", body.GetProperty("planName").GetString());
+
+        // Verify database state
+        var dealId = body.GetProperty("id").GetGuid();
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbDeal = await db.CompanyDeals.FirstOrDefaultAsync(d => d.Id == dealId);
+        Assert.NotNull(dbDeal);
+        Assert.Equal("acd-newdeal.com", dbDeal.Domain);
+        Assert.Equal(ClaudeNestWebApplicationFactory.EaglePlanId, dbDeal.PlanId);
+        Assert.True(dbDeal.IsActive);
     }
 
     [Fact]
@@ -133,6 +143,13 @@ public class AdminCompanyDealsControllerTests(ClaudeNestWebApplicationFactory fa
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Eagle", body.GetProperty("planName").GetString());
+
+        // Verify database state
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbDeal = await db.CompanyDeals.FirstOrDefaultAsync(d => d.Id == deal.Id);
+        Assert.NotNull(dbDeal);
+        Assert.Equal(ClaudeNestWebApplicationFactory.EaglePlanId, dbDeal.PlanId);
     }
 
     [Fact]
@@ -180,6 +197,14 @@ public class AdminCompanyDealsControllerTests(ClaudeNestWebApplicationFactory fa
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.False(body.GetProperty("isActive").GetBoolean());
+
+        // Verify database state
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbDeal = await db.CompanyDeals.FirstOrDefaultAsync(d => d.Id == deal.Id);
+        Assert.NotNull(dbDeal);
+        Assert.False(dbDeal.IsActive);
+        Assert.NotNull(dbDeal.DeactivatedAt);
     }
 
     [Fact]

@@ -24,6 +24,19 @@ public class PairingControllerTests(ClaudeNestWebApplicationFactory factory) : I
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(body.GetProperty("token").GetString()!.Length > 0);
+
+        // Verify database state - a pairing token was created for this user
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbUser = await db.Users.FirstOrDefaultAsync(u => u.Auth0UserId == user.Auth0UserId);
+        Assert.NotNull(dbUser);
+        var dbToken = await db.PairingTokens
+            .Where(t => t.UserId == dbUser.Id)
+            .OrderByDescending(t => t.ExpiresAt)
+            .FirstOrDefaultAsync();
+        Assert.NotNull(dbToken);
+        Assert.Null(dbToken.RedeemedAt);
+        Assert.True(dbToken.ExpiresAt > DateTimeOffset.UtcNow);
     }
 
     [Fact]
@@ -70,8 +83,32 @@ public class PairingControllerTests(ClaudeNestWebApplicationFactory factory) : I
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.NotEqual(Guid.Empty, body.GetProperty("agentId").GetGuid());
+        var agentId = body.GetProperty("agentId").GetGuid();
+        Assert.NotEqual(Guid.Empty, agentId);
         Assert.True(body.GetProperty("secret").GetString()!.Length > 0);
+
+        // Verify database state - agent was created with correct properties
+        {
+            using var scope = factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
+            var dbAgent = await db.Agents.FirstOrDefaultAsync(a => a.Id == agentId);
+            Assert.NotNull(dbAgent);
+            Assert.Equal("Test Agent", dbAgent.Name);
+            Assert.Equal("test-host", dbAgent.Hostname);
+            Assert.Equal("linux", dbAgent.OS);
+
+            // Verify credential was created for the agent
+            var dbCredential = await db.AgentCredentials.FirstOrDefaultAsync(c => c.AgentId == agentId);
+            Assert.NotNull(dbCredential);
+            Assert.Null(dbCredential.RevokedAt);
+
+            // Verify the pairing token was marked as redeemed
+            var dbToken = await db.PairingTokens
+                .Where(t => t.UserId == seededUser.Id)
+                .FirstOrDefaultAsync();
+            Assert.NotNull(dbToken);
+            Assert.NotNull(dbToken.RedeemedAt);
+        }
     }
 
     [Fact]

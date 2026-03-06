@@ -98,7 +98,7 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
     public async Task SessionStatusChanged(SessionStatusUpdate update)
     {
         // Persist session state to DB
-        var session = await db.Sessions.FindAsync(update.SessionId);
+        var session = await db.Sessions.AsTracking().FirstOrDefaultAsync(s => s.Id == update.SessionId);
         if (session is not null)
         {
             session.State = update.State.ToString();

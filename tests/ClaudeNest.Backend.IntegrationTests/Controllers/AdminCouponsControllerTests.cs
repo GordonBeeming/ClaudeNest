@@ -62,6 +62,17 @@ public class AdminCouponsControllerTests(ClaudeNestWebApplicationFactory factory
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("AC-NEW-COUPON", body.GetProperty("code").GetString());
         Assert.Equal(3, body.GetProperty("freeMonths").GetInt32());
+
+        // Verify database state
+        var couponId = body.GetProperty("id").GetGuid();
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbCoupon = await db.Coupons.FirstOrDefaultAsync(c => c.Id == couponId);
+        Assert.NotNull(dbCoupon);
+        Assert.Equal("AC-NEW-COUPON", dbCoupon.Code);
+        Assert.Equal(3, dbCoupon.FreeMonths);
+        Assert.Equal(50, dbCoupon.MaxRedemptions);
+        Assert.True(dbCoupon.IsActive);
     }
 
     [Fact]
@@ -145,6 +156,13 @@ public class AdminCouponsControllerTests(ClaudeNestWebApplicationFactory factory
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(999, body.GetProperty("maxRedemptions").GetInt32());
+
+        // Verify the change persisted to the database
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbCoupon = await db.Coupons.FirstOrDefaultAsync(c => c.Id == coupon.Id);
+        Assert.NotNull(dbCoupon);
+        Assert.Equal(999, dbCoupon.MaxRedemptions);
     }
 
     [Fact]
@@ -162,6 +180,13 @@ public class AdminCouponsControllerTests(ClaudeNestWebApplicationFactory factory
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.False(body.GetProperty("isActive").GetBoolean());
+
+        // Verify the change persisted to the database
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbCoupon = await db.Coupons.FirstOrDefaultAsync(c => c.Id == coupon.Id);
+        Assert.NotNull(dbCoupon);
+        Assert.False(dbCoupon.IsActive);
     }
 
     [Fact]
@@ -186,6 +211,13 @@ public class AdminCouponsControllerTests(ClaudeNestWebApplicationFactory factory
         await client.DeleteAsync($"/api/admin/coupons/{coupon.Id}");
 
         Assert.Contains(factory.FakeStripe.Calls, c => c.Contains("DeactivateStripeCoupon:stripe_coupon_test"));
+
+        // Verify database state
+        using var verifyScope = factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbCoupon = await verifyDb.Coupons.FirstOrDefaultAsync(c => c.Id == coupon.Id);
+        Assert.NotNull(dbCoupon);
+        Assert.False(dbCoupon.IsActive);
     }
 
     [Fact]
@@ -326,6 +358,16 @@ public class AdminCouponsControllerTests(ClaudeNestWebApplicationFactory factory
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("AC-REUSE-CODE", body.GetProperty("code").GetString());
+
+        // Verify database state
+        var newCouponId = body.GetProperty("id").GetGuid();
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
+        var dbCoupon = await db.Coupons.FirstOrDefaultAsync(c => c.Id == newCouponId);
+        Assert.NotNull(dbCoupon);
+        Assert.Equal("AC-REUSE-CODE", dbCoupon.Code);
+        Assert.Equal(2, dbCoupon.FreeMonths);
+        Assert.True(dbCoupon.IsActive);
     }
 
     [Fact]

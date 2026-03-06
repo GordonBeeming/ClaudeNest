@@ -115,6 +115,7 @@ The DbContext is configured with `QueryTrackingBehavior.NoTracking` as the **def
 - **Read-only queries** (returning data to the client): Do NOT add `.AsNoTracking()` — it's already the default
 - **Write queries** (updating/deleting entities): MUST explicitly add `.AsTracking()` before the query so EF Core tracks changes for `SaveChangesAsync()`
 - Always use `.AsTracking()` when you intend to modify and save an entity
+- **NEVER use `FindAsync`** — it does not respect `.AsTracking()` and returns untracked entities when `NoTracking` is the default. Mutations on untracked entities are silently ignored by `SaveChangesAsync()`. Always use `FirstOrDefaultAsync(e => e.Id == id)` instead (with `.AsTracking()` for writes).
 
 ```csharp
 // READ — no tracking needed (it's the default)
@@ -124,6 +125,11 @@ var agent = await db.Agents.FirstOrDefaultAsync(a => a.Id == id);
 var agent = await db.Agents.AsTracking().FirstOrDefaultAsync(a => a.Id == id);
 agent.Name = "New name";
 await db.SaveChangesAsync();
+
+// BAD — FindAsync returns untracked entity, changes won't persist!
+var agent = await db.Agents.FindAsync(id);
+agent.Name = "New name";
+await db.SaveChangesAsync(); // silently does nothing
 ```
 
 #### Delete Behavior
@@ -368,6 +374,14 @@ Program.cs       # Entry point and DI setup
 - Test naming convention: `MethodName_ExpectedBehavior` or `MethodName_ExpectedBehavior_WhenCondition`
 - Use `TestDatabaseHelper.Seed*Async()` to set up test data — add new seed methods when new entity types need seeding
 - Assert HTTP status codes and response body properties via `JsonElement`
+- **Always verify database state after write operations** — do NOT only assert on the HTTP response body. The response may reflect in-memory state that was never persisted (e.g., due to missing `.AsTracking()`). After any POST/PUT/DELETE that mutates data, create a new scope, get a fresh `NestDbContext`, and assert the entity was actually changed in the database:
+  ```csharp
+  using var scope = factory.Services.CreateScope();
+  var db = scope.ServiceProvider.GetRequiredService<NestDbContext>();
+  var dbEntity = await db.Entities.FirstOrDefaultAsync(e => e.Id == id);
+  Assert.NotNull(dbEntity);
+  Assert.Equal(expectedValue, dbEntity.SomeProperty);
+  ```
 - Clean up shared state (like plan defaults) at the end of tests that modify shared seed data
 - Run tests with: `dotnet test` from the repo root
 

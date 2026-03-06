@@ -150,7 +150,7 @@ public class StripeWebhookController(NestDbContext db, IStripeService stripeServ
         if (session.Metadata?.TryGetValue("couponId", out var couponIdStr) == true &&
             Guid.TryParse(couponIdStr, out var couponId))
         {
-            var coupon = await db.Coupons.FindAsync(couponId);
+            var coupon = await db.Coupons.AsTracking().FirstOrDefaultAsync(c => c.Id == couponId);
             if (coupon is not null)
             {
                 var alreadyRedeemed = await db.CouponRedemptions
