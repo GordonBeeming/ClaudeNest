@@ -43,4 +43,47 @@ public class PlansController(NestDbContext db, TimeProvider timeProvider) : Cont
 
         return Ok(plans);
     }
+
+    [HttpGet("coupon/{code}")]
+    public async Task<IActionResult> GetCouponByCode(string code)
+    {
+        var normalizedCode = code.Trim().ToUpperInvariant();
+        var now = timeProvider.GetUtcNow();
+
+        var coupon = await db.Coupons
+            .Include(c => c.Plan)
+            .FirstOrDefaultAsync(c => c.Code == normalizedCode);
+
+        if (coupon is null)
+            return Ok(new { Valid = false, Reason = "Coupon not found" });
+
+        if (!coupon.IsActive)
+            return Ok(new { Valid = false, Reason = "Coupon is no longer active" });
+
+        if (coupon.ExpiresAt.HasValue && coupon.ExpiresAt.Value < now)
+            return Ok(new { Valid = false, Reason = "Coupon has expired" });
+
+        if (coupon.TimesRedeemed >= coupon.MaxRedemptions)
+            return Ok(new { Valid = false, Reason = "Coupon has reached maximum redemptions" });
+
+        return Ok(new
+        {
+            Valid = true,
+            CouponId = coupon.Id,
+            coupon.Code,
+            PlanId = coupon.PlanId,
+            PlanName = coupon.Plan.Name,
+            PlanPriceCents = coupon.Plan.PriceCents,
+            PlanMaxAgents = coupon.Plan.MaxAgents,
+            PlanMaxSessions = coupon.Plan.MaxSessions,
+            PlanSortOrder = coupon.Plan.SortOrder,
+            coupon.FreeMonths,
+            DiscountType = coupon.DiscountType.ToString(),
+            coupon.PercentOff,
+            coupon.AmountOffCents,
+            coupon.FreeDays,
+            coupon.DurationMonths,
+            coupon.ExpiresAt
+        });
+    }
 }

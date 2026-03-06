@@ -305,6 +305,52 @@ public class AdminCouponsControllerTests(ClaudeNestWebApplicationFactory factory
     }
 
     [Fact]
+    public async Task CreateCoupon_Succeeds_WhenCodeReusedFromDeactivatedCoupon()
+    {
+        var admin = new TestUser("auth0|ac-reuse-code", "ac-reuse-code@test.com", "AC ReuseCode");
+        var (adminSeeded, _) = await TestDatabaseHelper.SeedUserAsync(factory.Services, admin, isAdmin: true);
+        await TestDatabaseHelper.SeedCouponAsync(factory.Services, adminSeeded.Id,
+            ClaudeNestWebApplicationFactory.HawkPlanId, code: "AC-REUSE-CODE", isActive: false);
+
+        var client = factory.CreateAuthenticatedClient(admin);
+
+        var response = await client.PostAsJsonAsync("/api/admin/coupons", new
+        {
+            Code = "AC-REUSE-CODE",
+            PlanId = ClaudeNestWebApplicationFactory.HawkPlanId,
+            FreeMonths = 2,
+            MaxRedemptions = 10,
+            DiscountType = "FreeMonths"
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("AC-REUSE-CODE", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task CreateCoupon_ReturnsBadRequest_ForDuplicateActiveCode()
+    {
+        var admin = new TestUser("auth0|ac-dupe-active", "ac-dupe-active@test.com", "AC DupeActive");
+        var (adminSeeded, _) = await TestDatabaseHelper.SeedUserAsync(factory.Services, admin, isAdmin: true);
+        await TestDatabaseHelper.SeedCouponAsync(factory.Services, adminSeeded.Id,
+            ClaudeNestWebApplicationFactory.HawkPlanId, code: "AC-DUPE-ACTIVE", isActive: true);
+
+        var client = factory.CreateAuthenticatedClient(admin);
+
+        var response = await client.PostAsJsonAsync("/api/admin/coupons", new
+        {
+            Code = "AC-DUPE-ACTIVE",
+            PlanId = ClaudeNestWebApplicationFactory.HawkPlanId,
+            FreeMonths = 1,
+            MaxRedemptions = 10,
+            DiscountType = "FreeMonths"
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task SetDefaultCoupon_Returns404_ForUnknownCoupon()
     {
         var admin = new TestUser("auth0|ac-def-404", "ac-def-404@test.com", "AC Def404");

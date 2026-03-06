@@ -94,7 +94,7 @@ public class AdminCouponsController(NestDbContext db, IStripeService stripeServi
 
         var normalizedCode = request.Code.Trim().ToUpperInvariant();
 
-        if (await db.Coupons.AnyAsync(c => c.Code == normalizedCode))
+        if (await db.Coupons.AnyAsync(c => c.Code == normalizedCode && c.IsActive))
             return BadRequest("Coupon code already exists");
 
         string? stripeCouponId = null;

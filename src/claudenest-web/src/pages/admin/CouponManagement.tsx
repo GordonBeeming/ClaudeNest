@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Tag, Plus, RefreshCw, Trash2, Star, Pencil, X, Check } from "lucide-react";
+import { Tag, Plus, RefreshCw, Trash2, Star, Pencil, X, Check, Link } from "lucide-react";
 import { clsx } from "clsx";
 import { format } from "date-fns";
 import { getAdminCoupons, createAdminCoupon, deleteAdminCoupon, setDefaultCoupon, updateAdminCoupon, getPlans } from "../../api";
@@ -465,6 +465,20 @@ export function CouponManagement() {
                           </>
                         ) : (
                           <>
+                            {coupon.isActive && (
+                              <button
+                                onClick={() => {
+                                  const url = `${window.location.origin}/plans?coupon=${encodeURIComponent(coupon.code)}`;
+                                  navigator.clipboard.writeText(url);
+                                  setSuccess(`Link copied: ${url}`);
+                                }}
+                                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
+                                title="Copy coupon link"
+                              >
+                                <Link className="h-3 w-3" />
+                                Copy link
+                              </button>
+                            )}
                             {coupon.isActive && (
                               <button
                                 onClick={() => startEditing(coupon)}

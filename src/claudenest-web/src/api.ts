@@ -196,6 +196,10 @@ export async function redeemCoupon(code: string): Promise<CouponValidation> {
   });
 }
 
+export async function getCouponByCode(code: string): Promise<CouponValidation> {
+  return apiFetch<CouponValidation>(`/plans/coupon/${encodeURIComponent(code)}`);
+}
+
 export async function getLedger(page = 1, pageSize = 20): Promise<PaginatedResult<LedgerEntry>> {
   return apiFetch<PaginatedResult<LedgerEntry>>(`/account/ledger?page=${page}&pageSize=${pageSize}`);
 }

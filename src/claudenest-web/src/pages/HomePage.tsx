@@ -21,7 +21,8 @@ import { MarketingNav } from "../components/MarketingNav";
 import { Footer } from "../components/Footer";
 import { PricingCards } from "../components/PricingCards";
 import { setPlanIntent } from "../utils/planIntent";
-import type { PlanInfo } from "../types";
+import { getCouponIntent } from "../utils/couponIntent";
+import type { PlanInfo, CouponValidation } from "../types";
 
 function HeroSection() {
   return (
@@ -209,6 +210,7 @@ function PricingSectionInner({ onLogin }: { onLogin?: (planId: string) => void }
   const [plans, setPlans] = useState<PlanInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [selecting, setSelecting] = useState<string | null>(null);
+  const [offerCoupon, setOfferCoupon] = useState<CouponValidation | null>(null);
 
   useEffect(() => {
     fetch("/api/plans")
@@ -216,6 +218,18 @@ function PricingSectionInner({ onLogin }: { onLogin?: (planId: string) => void }
       .then((data) => setPlans(data))
       .catch(() => {})
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const code = getCouponIntent();
+    if (code) {
+      fetch(`/api/plans/coupon/${encodeURIComponent(code)}`)
+        .then((res) => res.json())
+        .then((result) => {
+          if (result.valid) setOfferCoupon(result);
+        })
+        .catch(() => {});
+    }
   }, []);
 
   const handleSelectPlan = (planId: string) => {
@@ -251,6 +265,7 @@ function PricingSectionInner({ onLogin }: { onLogin?: (planId: string) => void }
             plans={plans}
             onSelectPlan={handleSelectPlan}
             selecting={selecting}
+            offerCoupon={offerCoupon}
           />
         </div>
         <div className="mx-auto mt-6 max-w-xl rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
@@ -280,6 +295,15 @@ function PricingSectionInner({ onLogin }: { onLogin?: (planId: string) => void }
 }
 
 function HomePageContent() {
+  useEffect(() => {
+    if (getCouponIntent()) {
+      // Delay slightly so the pricing section has rendered
+      setTimeout(() => {
+        document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+    }
+  }, []);
+
   return (
     <div className="flex min-h-screen flex-col">
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[100] focus:rounded-lg focus:bg-nest-500 focus:px-4 focus:py-2 focus:text-white">
@@ -310,6 +334,10 @@ function AuthAwareHomePage() {
   }
 
   if (isAuthenticated) {
+    // If there's a pending coupon, go to plans page so they can use it
+    if (getCouponIntent()) {
+      return <Navigate to="/plans" replace />;
+    }
     return <Navigate to="/dashboard" replace />;
   }
 

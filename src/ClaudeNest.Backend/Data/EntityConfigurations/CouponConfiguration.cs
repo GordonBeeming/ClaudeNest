@@ -11,7 +11,7 @@ public class CouponConfiguration : IEntityTypeConfiguration<Coupon>
         entity.HasKey(e => e.Id);
         entity.Property(e => e.Id).HasDefaultValueSql("NEWID()");
         entity.Property(e => e.Code).HasMaxLength(64).IsRequired();
-        entity.HasIndex(e => e.Code).IsUnique();
+        entity.HasIndex(e => e.Code).IsUnique().HasFilter("[IsActive] = 1");
         entity.Property(e => e.DiscountType).HasMaxLength(32).HasConversion<string>();
         entity.Property(e => e.PercentOff).HasPrecision(5, 2);
         entity.Property(e => e.StripeCouponId).HasMaxLength(256);

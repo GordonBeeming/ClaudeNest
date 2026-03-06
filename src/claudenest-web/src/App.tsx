@@ -13,6 +13,7 @@ import { Users } from "./pages/admin/Users";
 import { UserProvider, useUserContext } from "./contexts/UserContext";
 import { RefreshCw } from "lucide-react";
 import { auth0Domain, auth0ClientId, auth0Audience, isAuth0Configured } from "./config";
+import { setCouponIntent } from "./utils/couponIntent";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth0();
@@ -155,6 +156,20 @@ function AuthenticatedRoutes() {
   );
 }
 
+/** Capture ?coupon= from any URL, persist to localStorage, and strip from URL */
+function CouponCapture() {
+  const params = new URLSearchParams(window.location.search);
+  const coupon = params.get("coupon");
+  if (coupon) {
+    setCouponIntent(coupon);
+    params.delete("coupon");
+    const newSearch = params.toString();
+    const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : "") + window.location.hash;
+    window.history.replaceState({}, "", newUrl);
+  }
+  return null;
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -179,6 +194,7 @@ function AppRoutes() {
 export default function App() {
   const inner = (
     <BrowserRouter>
+      <CouponCapture />
       {isAuth0Configured ? (
         <Auth0Provider
           domain={auth0Domain}

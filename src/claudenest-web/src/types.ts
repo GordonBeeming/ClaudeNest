@@ -188,12 +188,17 @@ export interface CouponValidation {
   code?: string;
   planId?: string;
   planName?: string;
+  planPriceCents?: number;
+  planMaxAgents?: number;
+  planMaxSessions?: number;
+  planSortOrder?: number;
   freeMonths?: number;
   discountType?: DiscountType;
   percentOff?: number | null;
   amountOffCents?: number | null;
   freeDays?: number | null;
   durationMonths?: number;
+  expiresAt?: string | null;
   reason?: string;
 }
 

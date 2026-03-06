@@ -148,4 +148,118 @@ public class PlansControllerTests(ClaudeNestWebApplicationFactory factory) : ICl
                 ClaudeNestWebApplicationFactory.WrenPlanId, null);
         }
     }
+
+    [Fact]
+    public async Task GetCouponByCode_ReturnsValidCouponWithPlanDetails()
+    {
+        var adminUser = new TestUser("auth0|plans-coupon-lookup-admin", "plans-coupon-lookup-admin@test.com", "Plans Coupon Lookup Admin");
+        var (user, _) = await TestDatabaseHelper.SeedUserAsync(factory.Services, adminUser, isAdmin: true);
+
+        await TestDatabaseHelper.SeedCouponAsync(
+            factory.Services, user.Id, ClaudeNestWebApplicationFactory.RobinPlanId,
+            code: "LINKTEST1", freeMonths: 3);
+
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/api/plans/coupon/LINKTEST1");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(result.GetProperty("valid").GetBoolean());
+        Assert.Equal("LINKTEST1", result.GetProperty("code").GetString());
+        Assert.Equal("Robin", result.GetProperty("planName").GetString());
+        Assert.Equal(3, result.GetProperty("freeMonths").GetInt32());
+        Assert.Equal("FreeMonths", result.GetProperty("discountType").GetString());
+        Assert.True(result.GetProperty("planPriceCents").GetInt32() > 0);
+        Assert.True(result.GetProperty("planMaxAgents").GetInt32() > 0);
+        Assert.True(result.GetProperty("planMaxSessions").GetInt32() > 0);
+    }
+
+    [Fact]
+    public async Task GetCouponByCode_CaseInsensitive()
+    {
+        var adminUser = new TestUser("auth0|plans-coupon-case-admin", "plans-coupon-case-admin@test.com", "Plans Coupon Case Admin");
+        var (user, _) = await TestDatabaseHelper.SeedUserAsync(factory.Services, adminUser, isAdmin: true);
+
+        await TestDatabaseHelper.SeedCouponAsync(
+            factory.Services, user.Id, ClaudeNestWebApplicationFactory.WrenPlanId,
+            code: "CASETEST1", freeMonths: 1);
+
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/api/plans/coupon/casetest1");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(result.GetProperty("valid").GetBoolean());
+        Assert.Equal("CASETEST1", result.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task GetCouponByCode_ReturnsInvalid_WhenNotFound()
+    {
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/api/plans/coupon/DOESNOTEXIST");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(result.GetProperty("valid").GetBoolean());
+        Assert.Equal("Coupon not found", result.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task GetCouponByCode_ReturnsInvalid_WhenExpired()
+    {
+        var adminUser = new TestUser("auth0|plans-coupon-exp-admin", "plans-coupon-exp-admin@test.com", "Plans Coupon Exp Admin");
+        var (user, _) = await TestDatabaseHelper.SeedUserAsync(factory.Services, adminUser, isAdmin: true);
+
+        await TestDatabaseHelper.SeedCouponAsync(
+            factory.Services, user.Id, ClaudeNestWebApplicationFactory.WrenPlanId,
+            code: "EXPIREDLINK1", freeMonths: 1,
+            expiresAt: DateTimeOffset.UtcNow.AddDays(-1));
+
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/api/plans/coupon/EXPIREDLINK1");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(result.GetProperty("valid").GetBoolean());
+        Assert.Equal("Coupon has expired", result.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task GetCouponByCode_ReturnsInvalid_WhenInactive()
+    {
+        var adminUser = new TestUser("auth0|plans-coupon-inact-admin", "plans-coupon-inact-admin@test.com", "Plans Coupon Inact Admin");
+        var (user, _) = await TestDatabaseHelper.SeedUserAsync(factory.Services, adminUser, isAdmin: true);
+
+        await TestDatabaseHelper.SeedCouponAsync(
+            factory.Services, user.Id, ClaudeNestWebApplicationFactory.WrenPlanId,
+            code: "INACTIVELINK1", freeMonths: 1, isActive: false);
+
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/api/plans/coupon/INACTIVELINK1");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(result.GetProperty("valid").GetBoolean());
+        Assert.Equal("Coupon is no longer active", result.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task GetCouponByCode_ReturnsInvalid_WhenMaxedOut()
+    {
+        var adminUser = new TestUser("auth0|plans-coupon-max-admin", "plans-coupon-max-admin@test.com", "Plans Coupon Max Admin");
+        var (user, _) = await TestDatabaseHelper.SeedUserAsync(factory.Services, adminUser, isAdmin: true);
+
+        await TestDatabaseHelper.SeedCouponAsync(
+            factory.Services, user.Id, ClaudeNestWebApplicationFactory.WrenPlanId,
+            code: "MAXEDLINK1", freeMonths: 1, maxRedemptions: 2, timesRedeemed: 2);
+
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/api/plans/coupon/MAXEDLINK1");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(result.GetProperty("valid").GetBoolean());
+        Assert.Equal("Coupon has reached maximum redemptions", result.GetProperty("reason").GetString());
+    }
 }

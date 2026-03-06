@@ -2,10 +2,11 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Bird } from "lucide-react";
 import { clsx } from "clsx";
-import { getPlans, selectPlan, redeemCoupon } from "../api";
+import { getPlans, selectPlan, redeemCoupon, getCouponByCode } from "../api";
 import { useUserContext } from "../contexts/UserContext";
 import { PricingCards } from "../components/PricingCards";
 import { getPlanIntent, clearPlanIntent } from "../utils/planIntent";
+import { getCouponIntent, clearCouponIntent } from "../utils/couponIntent";
 import type { PlanInfo, CouponValidation } from "../types";
 
 export function PlanSelection() {
@@ -20,6 +21,7 @@ export function PlanSelection() {
   const [couponCode, setCouponCode] = useState("");
   const [couponResult, setCouponResult] = useState<CouponValidation | null>(null);
   const [couponLoading, setCouponLoading] = useState(false);
+  const [offerCoupon, setOfferCoupon] = useState<CouponValidation | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -42,10 +44,31 @@ export function PlanSelection() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Load coupon from localStorage (saved by CouponCapture from ?coupon=CODE)
+  useEffect(() => {
+    const couponParam = getCouponIntent();
+    if (couponParam) {
+      clearCouponIntent();
+      getCouponByCode(couponParam)
+        .then((result) => {
+          if (result.valid) {
+            setOfferCoupon(result);
+            setCouponCode(result.code ?? couponParam.toUpperCase());
+            setCouponResult(result);
+          }
+        })
+        .catch(() => {
+          // Silently ignore invalid coupon links
+        });
+    }
+  }, []);
+
   const handleSelect = useCallback(async (planId: string) => {
     setSelecting(planId);
     try {
-      const validCoupon = couponResult?.valid ? couponResult.code : undefined;
+      // If selecting a plan that doesn't match the offer coupon, clear coupon state
+      const couponMatchesPlan = couponResult?.valid && couponResult.planId === planId;
+      const validCoupon = couponMatchesPlan ? couponResult.code : undefined;
       const result = await selectPlan(planId, validCoupon);
       if (result.action === "redirect" && result.redirectUrl) {
         window.location.href = result.redirectUrl;
@@ -145,6 +168,7 @@ export function PlanSelection() {
           couponResult={couponResult}
           onApplyCoupon={handleApplyCoupon}
           couponLoading={couponLoading}
+          offerCoupon={offerCoupon}
         />
       </div>
       <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
