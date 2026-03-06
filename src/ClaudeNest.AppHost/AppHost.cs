@@ -17,6 +17,7 @@ var sqlPassword = builder.AddParameter("sql-password", secret: true, value: "Dev
 
 var sql = builder.AddSqlServer("sql", sqlPassword, port: 1533)
     .WithDataVolume("nestdb-data")
+    .WithLifetime(ContainerLifetime.Persistent)
     .AddDatabase("nestdb");
 
 var backend = builder.AddProject<Projects.ClaudeNest_Backend>("backend")

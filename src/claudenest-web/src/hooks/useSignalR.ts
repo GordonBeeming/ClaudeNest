@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   HubConnectionBuilder,
   HubConnection,
@@ -147,7 +147,7 @@ export function useSignalR() {
     [],
   );
 
-  return {
+  return useMemo(() => ({
     connected,
     subscribeToAgent,
     requestDirectoryListing,
@@ -162,5 +162,20 @@ export function useSignalR() {
     onAgentUpdateStatus,
     subscribeAsAdmin,
     onAdminAgentSummary,
-  };
+  }), [
+    connected,
+    subscribeToAgent,
+    requestDirectoryListing,
+    requestStartSession,
+    requestStopSession,
+    requestGetSessions,
+    onAgentStatusChanged,
+    onSessionStatusChanged,
+    onDirectoryListingResult,
+    onAllSessionsUpdated,
+    onAgentRemoved,
+    onAgentUpdateStatus,
+    subscribeAsAdmin,
+    onAdminAgentSummary,
+  ]);
 }

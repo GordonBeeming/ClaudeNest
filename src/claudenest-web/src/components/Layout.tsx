@@ -152,7 +152,7 @@ export function Layout() {
     signalR.subscribeAsAdmin();
     const cleanup = signalR.onAdminAgentSummary(setAdminAgentSummary);
     return cleanup;
-  }, [isAdmin, signalR.connected, signalR.subscribeAsAdmin, signalR.onAdminAgentSummary]);
+  }, [isAdmin, signalR]);
 
   const contextValue = useMemo(
     () => ({ ...signalR, adminAgentSummary }),
