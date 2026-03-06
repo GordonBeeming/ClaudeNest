@@ -40,7 +40,11 @@ public sealed class AgentUpdater
         return Task.FromResult(true);
     }
 
-    public async Task UpdateAsync(string downloadUrl, string newVersion, Func<Task> stopSessionsAsync, CancellationToken ct = default)
+    /// <summary>
+    /// Downloads the update binary and prepares it for installation, but does NOT apply it.
+    /// Returns the path to the downloaded binary.
+    /// </summary>
+    public async Task<string> DownloadAsync(string downloadUrl, string newVersion, CancellationToken ct = default)
     {
         var claudeNestDir = GetClaudeNestDir();
         var binDir = Path.Combine(claudeNestDir, "bin");
@@ -58,6 +62,13 @@ public sealed class AgentUpdater
         // Download directly to versioned path
         var versionedBinaryName = $"claudenest-agent-{newVersion}{ext}";
         var versionedBinaryPath = Path.Combine(binDir, versionedBinaryName);
+
+        // Skip download if binary already exists (e.g. previously downloaded but deferred)
+        if (File.Exists(versionedBinaryPath))
+        {
+            _logger.LogInformation("Update binary already exists at {Path}, skipping download", versionedBinaryPath);
+            return versionedBinaryPath;
+        }
 
         _logger.LogInformation("Downloading update from {Url} to {Path}", fullUrl, versionedBinaryPath);
         using var http = new HttpClient();
@@ -84,6 +95,14 @@ public sealed class AgentUpdater
             RemoveQuarantine(versionedBinaryPath);
         }
 
+        return versionedBinaryPath;
+    }
+
+    /// <summary>
+    /// Applies a previously downloaded update: stops sessions, switches binary, and restarts.
+    /// </summary>
+    public async Task ApplyAsync(string versionedBinaryPath, string newVersion, Func<Task> stopSessionsAsync, CancellationToken ct = default)
+    {
         // Stop sessions gracefully
         _logger.LogInformation("Stopping active sessions before update");
         await stopSessionsAsync();
@@ -92,12 +111,19 @@ public sealed class AgentUpdater
         await SwitchToNewBinaryAsync(versionedBinaryPath, newVersion);
 
         // Write update marker
+        var claudeNestDir = GetClaudeNestDir();
         var markerPath = Path.Combine(claudeNestDir, "update-pending");
         await File.WriteAllTextAsync(markerPath, newVersion, ct);
 
         // Exit with non-zero code so service managers restart the process
         _logger.LogInformation("Update staged. Restarting agent...");
         Environment.Exit(42);
+    }
+
+    public async Task UpdateAsync(string downloadUrl, string newVersion, Func<Task> stopSessionsAsync, CancellationToken ct = default)
+    {
+        var binaryPath = await DownloadAsync(downloadUrl, newVersion, ct);
+        await ApplyAsync(binaryPath, newVersion, stopSessionsAsync, ct);
     }
 
     /// <summary>

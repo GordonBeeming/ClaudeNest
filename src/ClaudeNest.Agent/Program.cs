@@ -1084,22 +1084,9 @@ static async Task<int> HandleUpdateAsync()
         return 1;
     }
 
-    if (currentVersion == latestVersion)
-    {
-        Console.WriteLine($"Already on the latest version (v{currentVersion}).");
-        return 0;
-    }
-
-    Console.WriteLine($"Updating to v{latestVersion}...");
-
-    // Download the new binary
     var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
     var isMacOS = RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
     var ext = isWindows ? ".exe" : "";
-    var rid = AgentUpdater.GetCurrentRid();
-    var filename = isWindows ? $"claudenest-agent-{rid}.exe" : $"claudenest-agent-{rid}";
-    var fullUrl = $"{downloadUrl}{filename}";
-
     var claudeNestDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest");
     var binDir = Path.Combine(claudeNestDir, "bin");
     Directory.CreateDirectory(binDir);
@@ -1108,41 +1095,79 @@ static async Task<int> HandleUpdateAsync()
     var versionedBinaryPath = Path.Combine(binDir, versionedBinaryName);
     var oldBinaryPath = config.InstalledBinaryPath;
 
-    Console.WriteLine($"Downloading from {fullUrl}...");
-
-    try
+    if (currentVersion == latestVersion)
     {
-        using var http = new HttpClient();
-        using var response = await http.GetAsync(fullUrl);
-        response.EnsureSuccessStatusCode();
+        // Already the latest version — but ensure the service actually points to this binary.
+        // This handles the case where the binary was downloaded (e.g. via install script) but
+        // the service is still running an older version.
+        var currentBinaryPath = Environment.ProcessPath;
+        if (currentBinaryPath is not null && config.InstalledBinaryPath == currentBinaryPath)
+        {
+            Console.WriteLine($"Already on the latest version (v{currentVersion}). Service is up to date.");
+            return 0;
+        }
 
-        await using var fs = File.Create(versionedBinaryPath);
-        await response.Content.CopyToAsync(fs);
-        await fs.FlushAsync();
-        fs.Close();
+        Console.WriteLine($"Already on the latest version (v{currentVersion}), but service is pointing to a different binary.");
+        Console.WriteLine("Switching service to this binary...");
+
+        // Ensure the versioned binary exists (might be running from a non-versioned path)
+        if (currentBinaryPath is not null && currentBinaryPath != versionedBinaryPath && !File.Exists(versionedBinaryPath))
+        {
+            File.Copy(currentBinaryPath, versionedBinaryPath, overwrite: true);
+            if (!isWindows)
+            {
+                File.SetUnixFileMode(versionedBinaryPath,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                    UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                    UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+            }
+        }
     }
-    catch (Exception ex)
+    else
     {
-        Console.Error.WriteLine($"Failed to download update: {ex.Message}");
-        return 1;
+        Console.WriteLine($"Updating to v{latestVersion}...");
+
+        // Download the new binary
+        var rid = AgentUpdater.GetCurrentRid();
+        var filename = isWindows ? $"claudenest-agent-{rid}.exe" : $"claudenest-agent-{rid}";
+        var fullUrl = $"{downloadUrl}{filename}";
+
+        Console.WriteLine($"Downloading from {fullUrl}...");
+
+        try
+        {
+            using var http = new HttpClient();
+            using var response = await http.GetAsync(fullUrl);
+            response.EnsureSuccessStatusCode();
+
+            await using var fs = File.Create(versionedBinaryPath);
+            await response.Content.CopyToAsync(fs);
+            await fs.FlushAsync();
+            fs.Close();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Failed to download update: {ex.Message}");
+            return 1;
+        }
+
+        // Make executable on Unix
+        if (!isWindows)
+        {
+            File.SetUnixFileMode(versionedBinaryPath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        }
+
+        // Remove quarantine on macOS
+        if (isMacOS)
+        {
+            AgentUpdater.RemoveQuarantine(versionedBinaryPath);
+        }
     }
 
-    // Make executable on Unix
-    if (!isWindows)
-    {
-        File.SetUnixFileMode(versionedBinaryPath,
-            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
-            UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
-            UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
-    }
-
-    // Remove quarantine on macOS
-    if (isMacOS)
-    {
-        AgentUpdater.RemoveQuarantine(versionedBinaryPath);
-    }
-
-    // Switch to new binary (updates config, service registration, symlink)
+    // Switch to the target binary (updates config, service registration, symlink)
     await AgentUpdater.SwitchToNewBinaryAsync(versionedBinaryPath, latestVersion);
 
     // Restart service if installed

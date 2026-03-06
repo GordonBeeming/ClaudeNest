@@ -15,6 +15,11 @@ public class AgentWorker(
     private SessionManager? _sessionManager;
     private AgentUpdater? _updater;
 
+    // Deferred update: binary is downloaded but waiting for sessions to end
+    private string? _pendingUpdateBinaryPath;
+    private UpdateAvailableNotification? _pendingUpdate;
+    private Guid _pendingUpdateAgentId;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var config = ConfigLoader.LoadConfig();
@@ -257,7 +262,7 @@ public class AgentWorker(
 
         logger.LogInformation("Agent registered and connected. Waiting for commands...");
 
-        // Main loop: heartbeat + health check
+        // Main loop: heartbeat + health check + deferred update check
         using var heartbeatTimer = new PeriodicTimer(TimeSpan.FromSeconds(30));
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -266,6 +271,9 @@ public class AgentWorker(
                 await heartbeatTimer.WaitForNextTickAsync(stoppingToken);
                 _sessionManager.HealthCheck();
                 await _connectionManager.SendHeartbeatAsync();
+
+                // Check if a deferred update can now be applied
+                await TryApplyPendingUpdateAsync(stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -291,7 +299,33 @@ public class AgentWorker(
                 NewVersion = notification.LatestVersion
             });
 
-            // Send restarting status before the update replaces the binary and stops the app
+            // Download the binary first
+            var binaryPath = await _updater.DownloadAsync(
+                notification.DownloadUrl,
+                notification.LatestVersion,
+                ct);
+
+            // If sessions are active, defer the update until they finish
+            if (_sessionManager.HasActiveSessions())
+            {
+                logger.LogInformation(
+                    "Update v{Version} downloaded but sessions are active. Deferring apply until sessions end.",
+                    notification.LatestVersion);
+
+                _pendingUpdateBinaryPath = binaryPath;
+                _pendingUpdate = notification;
+                _pendingUpdateAgentId = agentId;
+
+                await _connectionManager.SendUpdateStatusAsync(new UpdateStatusReport
+                {
+                    AgentId = agentId,
+                    Status = "waiting_for_sessions",
+                    NewVersion = notification.LatestVersion
+                });
+                return;
+            }
+
+            // No active sessions — apply immediately
             await _connectionManager.SendUpdateStatusAsync(new UpdateStatusReport
             {
                 AgentId = agentId,
@@ -299,8 +333,8 @@ public class AgentWorker(
                 NewVersion = notification.LatestVersion
             });
 
-            await _updater.UpdateAsync(
-                notification.DownloadUrl,
+            await _updater.ApplyAsync(
+                binaryPath,
                 notification.LatestVersion,
                 async () => _sessionManager.StopAllSessions(),
                 ct);
@@ -308,6 +342,61 @@ public class AgentWorker(
         catch (Exception ex)
         {
             logger.LogError(ex, "Auto-update failed");
+            try
+            {
+                await _connectionManager.SendUpdateStatusAsync(new UpdateStatusReport
+                {
+                    AgentId = agentId,
+                    Status = "failed",
+                    Error = ex.Message,
+                    NewVersion = notification.LatestVersion
+                });
+            }
+            catch
+            {
+                // Best effort
+            }
+        }
+    }
+
+    private async Task TryApplyPendingUpdateAsync(CancellationToken ct)
+    {
+        if (_pendingUpdate is null || _pendingUpdateBinaryPath is null ||
+            _updater is null || _connectionManager is null || _sessionManager is null)
+            return;
+
+        if (_sessionManager.HasActiveSessions())
+            return;
+
+        logger.LogInformation("All sessions ended. Applying deferred update v{Version}",
+            _pendingUpdate.LatestVersion);
+
+        var notification = _pendingUpdate;
+        var binaryPath = _pendingUpdateBinaryPath;
+        var agentId = _pendingUpdateAgentId;
+
+        // Clear pending state before applying (prevent re-entry)
+        _pendingUpdate = null;
+        _pendingUpdateBinaryPath = null;
+
+        try
+        {
+            await _connectionManager.SendUpdateStatusAsync(new UpdateStatusReport
+            {
+                AgentId = agentId,
+                Status = "restarting",
+                NewVersion = notification.LatestVersion
+            });
+
+            await _updater.ApplyAsync(
+                binaryPath,
+                notification.LatestVersion,
+                async () => _sessionManager.StopAllSessions(),
+                ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Deferred update apply failed");
             try
             {
                 await _connectionManager.SendUpdateStatusAsync(new UpdateStatusReport
