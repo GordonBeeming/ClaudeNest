@@ -525,22 +525,24 @@ static async Task<int> HandleAddPathsAsync(AgentCredentials credentials, NestCon
                         UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
                 }
 
-                existingConfig.InstalledBinaryPath = newVersionedPath;
-                ConfigLoader.SaveConfig(existingConfig);
-                await installer.UpdateBinPathAsync(newVersionedPath);
-
-                // Update symlink/copy
+                // Update convenience binary (real copy, not symlink — stable path for TCC)
                 var conveniencePath = Path.Combine(binDir, $"claudenest-agent{ext}");
-                if (isWindows)
+                if (!isWindows && (File.Exists(conveniencePath) || new FileInfo(conveniencePath).LinkTarget is not null))
+                    File.Delete(conveniencePath);
+                File.Copy(newVersionedPath, conveniencePath, overwrite: true);
+                if (!isWindows)
                 {
-                    File.Copy(newVersionedPath, conveniencePath, overwrite: true);
+                    File.SetUnixFileMode(conveniencePath,
+                        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                        UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                        UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
                 }
-                else
-                {
-                    if (File.Exists(conveniencePath) || new FileInfo(conveniencePath).LinkTarget is not null)
-                        File.Delete(conveniencePath);
-                    File.CreateSymbolicLink(conveniencePath, $"claudenest-agent-{version}{ext}");
-                }
+
+                // On Unix, service uses stable path; on Windows, versioned path
+                var serviceBinPath = isWindows ? newVersionedPath : conveniencePath;
+                existingConfig.InstalledBinaryPath = serviceBinPath;
+                ConfigLoader.SaveConfig(existingConfig);
+                await installer.UpdateBinPathAsync(serviceBinPath);
             }
 
             await installer.RestartAsync();
@@ -708,18 +710,19 @@ static async Task<int> InstallBinaryAndService(AgentCredentials credentials, str
         }
     }
 
-    // Create symlink (Unix) or copy (Windows) for CLI convenience
-    if (isWindows)
+    // Create convenience binary at stable path (real copy, not symlink)
+    // On Unix, the service uses this stable path so macOS TCC permissions survive updates
+    if (!isWindows && (File.Exists(conveniencePath) || new FileInfo(conveniencePath).LinkTarget is not null))
     {
-        File.Copy(versionedBinaryPath, conveniencePath, overwrite: true);
+        File.Delete(conveniencePath); // Remove any existing symlink or old copy
     }
-    else
+    File.Copy(versionedBinaryPath, conveniencePath, overwrite: true);
+    if (!isWindows)
     {
-        if (File.Exists(conveniencePath) || new FileInfo(conveniencePath).LinkTarget is not null)
-        {
-            File.Delete(conveniencePath);
-        }
-        File.CreateSymbolicLink(conveniencePath, versionedBinaryName);
+        File.SetUnixFileMode(conveniencePath,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+            UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
     }
 
     // Add ~/.claudenest/bin to PATH
@@ -730,12 +733,16 @@ static async Task<int> InstallBinaryAndService(AgentCredentials credentials, str
         RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "macos-launchagent" :
         "linux-systemd";
 
+    // On Unix, the service uses the stable (unversioned) path so macOS TCC permissions persist across updates.
+    // On Windows, we keep the versioned path because the running binary can't be overwritten.
+    var serviceBinaryPath = isWindows ? versionedBinaryPath : conveniencePath;
+
     // Save config with name, allowed paths, and service info
     var nestConfig = new NestConfig
     {
         Name = agentName,
         AllowedPaths = paths,
-        InstalledBinaryPath = versionedBinaryPath,
+        InstalledBinaryPath = serviceBinaryPath,
         ServiceType = serviceType
     };
     ConfigLoader.SaveConfig(nestConfig);
@@ -752,14 +759,14 @@ static async Task<int> InstallBinaryAndService(AgentCredentials credentials, str
     try
     {
         var installer = ServiceInstallerFactory.Create(serviceLogger);
-        var installResult = await installer.InstallAsync(versionedBinaryPath, options);
+        var installResult = await installer.InstallAsync(serviceBinaryPath, options);
         if (installResult)
         {
             Console.WriteLine();
             Console.WriteLine($"Agent paired and installed successfully!");
             Console.WriteLine($"  Agent ID:    {credentials.AgentId}");
             Console.WriteLine($"  Name:        {agentName}");
-            Console.WriteLine($"  Binary:      {versionedBinaryPath}");
+            Console.WriteLine($"  Binary:      {serviceBinaryPath}");
             Console.WriteLine($"  Service:     {serviceType}");
             Console.WriteLine($"  Paths:       {string.Join(", ", paths)}");
             Console.WriteLine($"  Config:      {claudeNestDir}/");

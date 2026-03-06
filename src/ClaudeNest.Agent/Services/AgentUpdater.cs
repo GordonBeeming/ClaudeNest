@@ -127,7 +127,9 @@ public sealed class AgentUpdater
     }
 
     /// <summary>
-    /// Shared logic for switching to a new versioned binary. Updates config, service registration, and symlink/copy.
+    /// Shared logic for switching to a new versioned binary. Updates config, service registration, and convenience copy.
+    /// On Unix, the service always uses the stable (unversioned) path so macOS TCC permissions persist across updates.
+    /// On Windows, the service uses the versioned path because the running binary can't be overwritten.
     /// </summary>
     public static async Task SwitchToNewBinaryAsync(string newVersionedPath, string? newVersion = null)
     {
@@ -137,23 +139,24 @@ public sealed class AgentUpdater
         var convenienceName = $"claudenest-agent{ext}";
         var conveniencePath = Path.Combine(binDir, convenienceName);
 
-        // Update config
-        var config = ConfigLoader.LoadConfig();
-        config.InstalledBinaryPath = newVersionedPath;
-        ConfigLoader.SaveConfig(config);
+        // On Unix, the service binary is the stable (unversioned) path; on Windows it's the versioned path
+        var serviceBinaryPath = isWindows ? newVersionedPath : conveniencePath;
 
-        // Update service registration
-        using var loggerFactory = LoggerFactory.Create(_ => { });
-        var logger = loggerFactory.CreateLogger("ServiceInstaller");
-        var installer = ServiceInstallerFactory.Create(logger);
-
-        if (installer.IsInstalled())
+        // Update the stable convenience binary (real copy on all platforms)
+        if (!isWindows)
         {
-            await installer.UpdateBinPathAsync(newVersionedPath);
+            // Remove any existing symlink or old copy, then copy the new binary
+            if (File.Exists(conveniencePath) || new FileInfo(conveniencePath).LinkTarget is not null)
+            {
+                File.Delete(conveniencePath);
+            }
+            File.Copy(newVersionedPath, conveniencePath, overwrite: true);
+            File.SetUnixFileMode(conveniencePath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
         }
-
-        // Update symlink (Unix) or copy (Windows) for CLI convenience
-        if (isWindows)
+        else
         {
             try
             {
@@ -161,14 +164,20 @@ public sealed class AgentUpdater
             }
             catch { /* best effort — file may be in use */ }
         }
-        else
-        {
-            if (File.Exists(conveniencePath) || new FileInfo(conveniencePath).LinkTarget is not null)
-            {
-                File.Delete(conveniencePath);
-            }
 
-            File.CreateSymbolicLink(conveniencePath, Path.GetFileName(newVersionedPath));
+        // Update config to point to the service binary path
+        var config = ConfigLoader.LoadConfig();
+        config.InstalledBinaryPath = serviceBinaryPath;
+        ConfigLoader.SaveConfig(config);
+
+        // Update service registration with the service binary path
+        using var loggerFactory = LoggerFactory.Create(_ => { });
+        var logger = loggerFactory.CreateLogger("ServiceInstaller");
+        var installer = ServiceInstallerFactory.Create(logger);
+
+        if (installer.IsInstalled())
+        {
+            await installer.UpdateBinPathAsync(serviceBinaryPath);
         }
     }
 
