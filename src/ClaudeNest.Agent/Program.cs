@@ -373,6 +373,9 @@ static async Task<int> HandleInstallAsync(string[] args)
     var trustResult = await ValidateAndTrustPaths(paths, backendUrl, agentName);
     if (trustResult != 0) return trustResult;
 
+    // On macOS, pre-trigger folder access prompts while user is present
+    PreTriggerDirectoryAccess(paths);
+
     // Check remote-control is enabled
     var remoteResult = await EnsureRemoteControlEnabled();
     if (remoteResult != 0) return remoteResult;
@@ -474,6 +477,9 @@ static async Task<int> HandleAddPathsAsync(AgentCredentials credentials, NestCon
     var trustResult = await ValidateAndTrustPaths(pathsToAdd, credentials.BackendUrl, existingConfig.Name ?? Environment.MachineName);
     if (trustResult != 0) return trustResult;
 
+    // On macOS, pre-trigger folder access prompts while user is present
+    PreTriggerDirectoryAccess(pathsToAdd);
+
     // Merge paths into existing config
     var mergedPaths = existingConfig.AllowedPaths.Concat(pathsToAdd).Distinct().ToList();
     existingConfig.AllowedPaths = mergedPaths;
@@ -551,6 +557,33 @@ static async Task<int> HandleAddPathsAsync(AgentCredentials credentials, NestCon
     }
 
     return 0;
+}
+
+/// <summary>
+/// On macOS, listing a protected directory (Downloads, Desktop, Documents, etc.) triggers a TCC
+/// consent dialog. We do this during install/add-path while the user is at the computer so the
+/// prompt doesn't appear later when they're remote.
+/// </summary>
+static void PreTriggerDirectoryAccess(List<string> paths)
+{
+    if (!OperatingSystem.IsMacOS()) return;
+
+    Console.WriteLine();
+    Console.WriteLine("📂 Verifying folder access (macOS may prompt for permission)...");
+
+    foreach (var path in paths)
+    {
+        try
+        {
+            // Enumerating the directory triggers the TCC prompt for protected folders
+            Directory.GetDirectories(path);
+            Console.WriteLine($"   ✅ {path}");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            Console.WriteLine($"   ❌ {path} — access denied. Grant access in System Settings > Privacy & Security > Files and Folders.");
+        }
+    }
 }
 
 static async Task<int> ValidateAndTrustPaths(List<string> paths, string backendUrl, string agentName)
