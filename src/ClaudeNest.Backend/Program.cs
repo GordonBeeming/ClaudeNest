@@ -48,9 +48,19 @@ else
             {
                 OnMessageReceived = context =>
                 {
+                    // Skip JWT validation for agent HMAC tokens — these are handled
+                    // by AgentAuthMiddleware, not the JWT bearer handler
+                    var authHeader = context.HttpContext.Request.Headers["Authorization"].FirstOrDefault();
+                    if (authHeader?.StartsWith("Bearer agent-hmac|") == true)
+                    {
+                        context.NoResult();
+                        return Task.CompletedTask;
+                    }
+
                     // SignalR sends the access token as a query parameter for WebSocket connections
                     var accessToken = context.Request.Query["access_token"];
                     if (!string.IsNullOrEmpty(accessToken) &&
+                        !accessToken.ToString().StartsWith("agent-hmac|") &&
                         context.HttpContext.Request.Path.StartsWithSegments("/hubs/nest"))
                     {
                         context.Token = accessToken;

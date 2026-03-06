@@ -25,9 +25,17 @@ namespace ClaudeNest.Agent.Serialization;
 [JsonSerializable(typeof(UpdateStatusReport))]
 [JsonSerializable(typeof(ActiveSessionInfo))]
 [JsonSerializable(typeof(List<ActiveSessionInfo>))]
+// GitHub API types (used by CLI update command)
+[JsonSerializable(typeof(List<GitHubRelease>))]
 // Primitives used by SignalR method arguments
 [JsonSerializable(typeof(Guid))]
 [JsonSerializable(typeof(string))]
 [JsonSerializable(typeof(bool))]
 [JsonSerializable(typeof(int))]
 internal partial class AgentJsonContext : JsonSerializerContext;
+
+public sealed class GitHubRelease
+{
+    [JsonPropertyName("tag_name")]
+    public string? TagName { get; init; }
+}

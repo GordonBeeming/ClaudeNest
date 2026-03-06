@@ -7,6 +7,7 @@ using ClaudeNest.Agent.Auth;
 using ClaudeNest.Agent.Config;
 using ClaudeNest.Agent.Serialization;
 using ClaudeNest.Agent.ServiceInstall;
+using ClaudeNest.Agent.Services;
 
 // Handle subcommands — first arg is always the command
 if (args.Length == 0 || args[0] == "help")
@@ -1038,91 +1039,126 @@ static async Task<int> HandleRestartAsync()
 
 static async Task<int> HandleUpdateAsync()
 {
-    var credentials = ConfigLoader.LoadCredentials();
     var config = ConfigLoader.LoadConfig();
 
-    if (credentials is null || config.AllowedPaths.Count == 0)
+    if (config.AllowedPaths.Count == 0)
     {
         Console.Error.WriteLine("No agent installed. Run 'claudenest-agent install' first.");
         return 1;
     }
 
-    var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-    var currentBinaryPath = Environment.ProcessPath;
-    if (currentBinaryPath is null)
+    var currentVersion = typeof(AgentWorker).Assembly.GetName().Version?.ToString() ?? "0.0.0";
+    Console.WriteLine($"Current version: v{currentVersion}");
+    Console.WriteLine("Checking for updates...");
+
+    // Fetch latest agent release from GitHub
+    const string repoOwner = "gordonbeeming";
+    const string repoName = "ClaudeNest";
+
+    string latestVersion;
+    string downloadUrl;
+
+    try
     {
-        Console.Error.WriteLine("Cannot determine current binary path.");
+        using var http = new HttpClient();
+        http.DefaultRequestHeaders.Add("User-Agent", "ClaudeNest-Agent");
+        http.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");
+
+        var releases = await http.GetFromJsonAsync(
+            $"https://api.github.com/repos/{repoOwner}/{repoName}/releases?per_page=10",
+            AgentJsonContext.Default.ListGitHubRelease);
+
+        var agentRelease = releases?.FirstOrDefault(r => r.TagName?.StartsWith("agent-v") == true);
+        if (agentRelease?.TagName is null)
+        {
+            Console.Error.WriteLine("No agent releases found on GitHub.");
+            return 1;
+        }
+
+        latestVersion = agentRelease.TagName["agent-v".Length..];
+        downloadUrl = $"https://github.com/{repoOwner}/{repoName}/releases/download/{agentRelease.TagName}/";
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Failed to check for updates: {ex.Message}");
         return 1;
     }
 
-    // Determine new versioned path
-    var version = typeof(AgentWorker).Assembly.GetName().Version?.ToString() ?? "0.0.0";
+    if (currentVersion == latestVersion)
+    {
+        Console.WriteLine($"Already on the latest version (v{currentVersion}).");
+        return 0;
+    }
+
+    Console.WriteLine($"Updating to v{latestVersion}...");
+
+    // Download the new binary
+    var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+    var isMacOS = RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
     var ext = isWindows ? ".exe" : "";
+    var rid = AgentUpdater.GetCurrentRid();
+    var filename = isWindows ? $"claudenest-agent-{rid}.exe" : $"claudenest-agent-{rid}";
+    var fullUrl = $"{downloadUrl}{filename}";
+
     var claudeNestDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest");
     var binDir = Path.Combine(claudeNestDir, "bin");
     Directory.CreateDirectory(binDir);
 
-    var versionedBinaryName = $"claudenest-agent-{version}{ext}";
+    var versionedBinaryName = $"claudenest-agent-{latestVersion}{ext}";
     var versionedBinaryPath = Path.Combine(binDir, versionedBinaryName);
-    var convenienceName = $"claudenest-agent{ext}";
-    var conveniencePath = Path.Combine(binDir, convenienceName);
-
-    // Copy current binary to new versioned path (no need to stop service — writing to a new file)
-    if (currentBinaryPath != versionedBinaryPath)
-    {
-        Console.WriteLine($"Installing agent binary to {versionedBinaryPath}...");
-        File.Copy(currentBinaryPath, versionedBinaryPath, overwrite: true);
-        if (!isWindows)
-        {
-            File.SetUnixFileMode(versionedBinaryPath,
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
-                UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
-                UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
-        }
-        Console.WriteLine("Binary installed.");
-    }
-    else
-    {
-        Console.WriteLine("Already running from the versioned location. No binary copy needed.");
-    }
-
-    // Update config
     var oldBinaryPath = config.InstalledBinaryPath;
-    config.InstalledBinaryPath = versionedBinaryPath;
-    ConfigLoader.SaveConfig(config);
 
-    // Update service registration to point to new binary
+    Console.WriteLine($"Downloading from {fullUrl}...");
+
+    try
+    {
+        using var http = new HttpClient();
+        using var response = await http.GetAsync(fullUrl);
+        response.EnsureSuccessStatusCode();
+
+        await using var fs = File.Create(versionedBinaryPath);
+        await response.Content.CopyToAsync(fs);
+        await fs.FlushAsync();
+        fs.Close();
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Failed to download update: {ex.Message}");
+        return 1;
+    }
+
+    // Make executable on Unix
+    if (!isWindows)
+    {
+        File.SetUnixFileMode(versionedBinaryPath,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+            UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+    }
+
+    // Remove quarantine on macOS
+    if (isMacOS)
+    {
+        AgentUpdater.RemoveQuarantine(versionedBinaryPath);
+    }
+
+    // Switch to new binary (updates config, service registration, symlink)
+    await AgentUpdater.SwitchToNewBinaryAsync(versionedBinaryPath, latestVersion);
+
+    // Restart service if installed
     using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
     var serviceLogger = loggerFactory.CreateLogger("ServiceInstaller");
     var installer = ServiceInstallerFactory.Create(serviceLogger);
 
     if (installer.IsInstalled())
     {
-        Console.WriteLine("Updating service binary path...");
-        await installer.UpdateBinPathAsync(versionedBinaryPath);
-
         Console.WriteLine("Restarting agent service...");
         await installer.RestartAsync();
-        Console.WriteLine("Agent updated and restarted successfully.");
+        Console.WriteLine($"Agent updated to v{latestVersion} and restarted successfully.");
     }
     else
     {
-        Console.WriteLine("No background service found. Binary updated but service not restarted.");
-        Console.WriteLine("Run 'claudenest-agent install' to set up the service.");
-    }
-
-    // Update symlink/copy for CLI convenience
-    if (isWindows)
-    {
-        File.Copy(versionedBinaryPath, conveniencePath, overwrite: true);
-    }
-    else
-    {
-        if (File.Exists(conveniencePath) || new FileInfo(conveniencePath).LinkTarget is not null)
-        {
-            File.Delete(conveniencePath);
-        }
-        File.CreateSymbolicLink(conveniencePath, versionedBinaryName);
+        Console.WriteLine($"Agent updated to v{latestVersion}. No background service found — run 'claudenest-agent install' to set up the service.");
     }
 
     // Clean up old versioned binary if different
@@ -1133,7 +1169,7 @@ static async Task<int> HandleUpdateAsync()
             File.Delete(oldBinaryPath);
             Console.WriteLine($"Cleaned up old binary: {Path.GetFileName(oldBinaryPath)}");
         }
-        catch { /* best effort — may be in use on Windows */ }
+        catch { /* best effort — may be in use */ }
     }
 
     return 0;

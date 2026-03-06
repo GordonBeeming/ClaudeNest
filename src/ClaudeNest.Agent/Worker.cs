@@ -162,20 +162,33 @@ public class AgentWorker(
         }
 
         // Register with the hub
-        var registrationResult = await _connectionManager.RegisterAgentAsync(new AgentInfo
+        AgentRegistrationResult? registrationResult;
+        try
         {
-            AgentId = credentials.AgentId,
-            Name = config.Name,
-            Hostname = Environment.MachineName,
-            OS = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows"
-                : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "macos"
-                : "linux",
-            Version = typeof(AgentWorker).Assembly.GetName().Version?.ToString() ?? "0.0.0",
-            Architecture = RuntimeInformation.ProcessArchitecture.ToString(),
-            AllowedPaths = config.AllowedPaths
-        });
+            registrationResult = await _connectionManager.RegisterAgentAsync(new AgentInfo
+            {
+                AgentId = credentials.AgentId,
+                Name = config.Name,
+                Hostname = Environment.MachineName,
+                OS = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows"
+                    : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "macos"
+                    : "linux",
+                Version = typeof(AgentWorker).Assembly.GetName().Version?.ToString() ?? "0.0.0",
+                Architecture = RuntimeInformation.ProcessArchitecture.ToString(),
+                AllowedPaths = config.AllowedPaths
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to register agent (connection may have been lost). " +
+                "The reconnection handler will re-register when connection is restored.");
+            // Don't crash — let the reconnection handler in SignalRConnectionManager re-register.
+            // Fall through to the heartbeat loop which will keep the process alive.
+            registrationResult = null;
+        }
 
-        logger.LogInformation("Agent registered successfully");
+        if (registrationResult is not null)
+            logger.LogInformation("Agent registered successfully");
 
         // Check if we just completed an update
         var updateCompleted = await _updater.CheckAndCompleteUpdateAsync();

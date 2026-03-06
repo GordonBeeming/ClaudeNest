@@ -22,6 +22,21 @@ public class AgentAuthMiddleware(RequestDelegate next, ILogger<AgentAuthMiddlewa
         var agentIdHeader = context.Request.Headers["X-Agent-Id"].FirstOrDefault();
         if (string.IsNullOrEmpty(agentIdHeader))
         {
+            // Check for HMAC token in Authorization header or access_token query param.
+            // SignalR WebSocket connections use ClientWebSocket directly, which bypasses
+            // HttpMessageHandlerFactory — so custom HMAC headers aren't sent on the
+            // WebSocket upgrade request. The agent sends the token via AccessTokenProvider instead.
+            var hmacToken = ExtractAgentHmacToken(context);
+            if (hmacToken is not null)
+            {
+                var parts = hmacToken.Split('|', 3);
+                if (parts.Length == 3 && Guid.TryParse(parts[0], out var tokenAgentId))
+                {
+                    await HandleHmacAuth(context, db, timeProvider, tokenAgentId, parts[1], parts[2]);
+                    return;
+                }
+            }
+
             // Not an agent connection — let JWT auth handle it
             await next(context);
             return;
@@ -123,6 +138,21 @@ public class AgentAuthMiddleware(RequestDelegate next, ILogger<AgentAuthMiddlewa
         await db.SaveChangesAsync();
         context.Items["AgentId"] = agentId;
         await next(context);
+    }
+
+    private static string? ExtractAgentHmacToken(HttpContext context)
+    {
+        const string prefix = "agent-hmac|";
+
+        var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
+        if (authHeader is not null && authHeader.StartsWith($"Bearer {prefix}"))
+            return authHeader[$"Bearer {prefix}".Length..];
+
+        var accessToken = context.Request.Query["access_token"].FirstOrDefault();
+        if (accessToken is not null && accessToken.StartsWith(prefix))
+            return accessToken[prefix.Length..];
+
+        return null;
     }
 
     private async Task HandleLegacyAuth(

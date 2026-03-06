@@ -181,7 +181,7 @@ public sealed class AgentUpdater
         }
     }
 
-    private static void RemoveQuarantine(string path)
+    internal static void RemoveQuarantine(string path)
     {
         try
         {
@@ -208,7 +208,7 @@ public sealed class AgentUpdater
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claudenest");
     }
 
-    private static string GetCurrentRid()
+    internal static string GetCurrentRid()
     {
         var arch = RuntimeInformation.ProcessArchitecture;
         if (OperatingSystem.IsWindows())

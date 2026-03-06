@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using ClaudeNest.Agent.Auth;
 using ClaudeNest.Agent.Config;
@@ -44,6 +46,17 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
             {
                 options.HttpMessageHandlerFactory = innerHandler =>
                     new HmacAuthHandler(_credentials.AgentId, _credentials.Secret, innerHandler);
+                // AccessTokenProvider is needed for WebSocket connections where
+                // HttpMessageHandlerFactory doesn't apply (WebSocket uses ClientWebSocket directly)
+                options.AccessTokenProvider = () =>
+                {
+                    var timestamp = DateTimeOffset.UtcNow.ToString("O");
+                    var derivedKey = SHA256.HashData(Encoding.UTF8.GetBytes(_credentials.Secret));
+                    var message = $"{timestamp}|{_credentials.AgentId}";
+                    var signature = HMACSHA256.HashData(derivedKey, Encoding.UTF8.GetBytes(message));
+                    return Task.FromResult<string?>(
+                        $"agent-hmac|{_credentials.AgentId}|{timestamp}|{Convert.ToBase64String(signature)}");
+                };
             })
             .WithAutomaticReconnect()
             .AddJsonProtocol(options =>
