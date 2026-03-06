@@ -197,8 +197,15 @@ function FeaturesSection() {
   );
 }
 
-function PricingSection() {
-  const auth0 = isAuth0Configured ? useAuth0() : null;
+function PricingSectionWithAuth() {
+  const auth0 = useAuth0();
+  return <PricingSectionInner onLogin={(planId) => {
+    setPlanIntent(planId);
+    auth0.loginWithRedirect();
+  }} />;
+}
+
+function PricingSectionInner({ onLogin }: { onLogin?: (planId: string) => void }) {
   const [plans, setPlans] = useState<PlanInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [selecting, setSelecting] = useState<string | null>(null);
@@ -212,10 +219,9 @@ function PricingSection() {
   }, []);
 
   const handleSelectPlan = (planId: string) => {
-    if (!auth0) return;
+    if (!onLogin) return;
     setSelecting(planId);
-    setPlanIntent(planId);
-    auth0.loginWithRedirect();
+    onLogin(planId);
   };
 
   if (loading) {
@@ -285,7 +291,7 @@ function HomePageContent() {
         <HowItWorksSection />
         <SecuritySection />
         <FeaturesSection />
-        <PricingSection />
+        {isAuth0Configured ? <PricingSectionWithAuth /> : <PricingSectionInner />}
       </main>
       <Footer />
     </div>
