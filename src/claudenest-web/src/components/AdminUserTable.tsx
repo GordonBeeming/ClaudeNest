@@ -8,6 +8,7 @@ import {
 } from "../api";
 import type { AdminUserInfo, CouponInfo, PlanInfo } from "../types";
 import { formatDiscountDescription } from "../types";
+import { PlanPicker } from "./PlanPicker";
 import { Select } from "./Select";
 
 export function StatusBadge({ status, cancelAtPeriodEnd }: { status: string; cancelAtPeriodEnd: boolean }) {
@@ -299,13 +300,13 @@ export function AdminUserTable({ domain, plans, coupons, compact }: AdminUserTab
                   No higher plans available to override with.
                 </p>
               ) : (
-                <Select
-                  value={selectedOverridePlanId}
-                  onChange={setSelectedOverridePlanId}
-                  placeholder="Select a plan..."
-                  className="mb-4"
-                  options={eligiblePlans.map((p) => ({ value: p.id, label: p.name }))}
-                />
+                <div className="mb-4">
+                  <PlanPicker
+                    plans={eligiblePlans}
+                    value={selectedOverridePlanId}
+                    onChange={setSelectedOverridePlanId}
+                  />
+                </div>
               )}
               <div className="flex items-center gap-3">
                 {eligiblePlans.length > 0 && (
