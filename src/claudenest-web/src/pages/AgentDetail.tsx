@@ -19,8 +19,10 @@ import { FolderTree, FavoriteFolderTree } from "../components/FolderTree";
 import { SessionPanel } from "../components/SessionPanel";
 import { useSignalRContext } from "../contexts/SignalRContext";
 import { useUserContext } from "../contexts/UserContext";
+import { useSEO } from "../hooks/useSEO";
 
 export function AgentDetail() {
+  useSEO({ title: "Agent Details", noindex: true });
   const { agentId } = useParams<{ agentId: string }>();
   const navigate = useNavigate();
   const { user } = useUserContext();

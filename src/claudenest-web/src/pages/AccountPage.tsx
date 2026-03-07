@@ -9,6 +9,7 @@ import { format } from "date-fns";
 import { AgentCredentialManager } from "../components/AgentCredentialManager";
 import { Select } from "../components/Select";
 import { ScrollableTable } from "../components/ScrollableTable";
+import { useSEO } from "../hooks/useSEO";
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
@@ -81,6 +82,7 @@ const PERMISSION_MODES = [
 ];
 
 export function AccountPage() {
+  useSEO({ title: "Account", noindex: true });
   const { user, refreshUser } = useUserContext();
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);

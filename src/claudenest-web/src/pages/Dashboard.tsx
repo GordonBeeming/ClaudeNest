@@ -6,8 +6,10 @@ import { AgentCard } from "../components/AgentCard";
 import { InstallAgentModal } from "../components/InstallAgentModal";
 import { useSignalRContext } from "../contexts/SignalRContext";
 import { useUserContext } from "../contexts/UserContext";
+import { useSEO } from "../hooks/useSEO";
 
 export function Dashboard() {
+  useSEO({ title: "Dashboard", noindex: true });
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
