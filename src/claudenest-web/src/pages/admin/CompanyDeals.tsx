@@ -8,8 +8,10 @@ import { PlanPicker } from "../../components/PlanPicker";
 import { AdminUserTable } from "../../components/AdminUserTable";
 import { ScrollableTable } from "../../components/ScrollableTable";
 import { useSignalRContext } from "../../contexts/SignalRContext";
+import { useSEO } from "../../hooks/useSEO";
 
 export function CompanyDeals() {
+  useSEO({ title: "Admin - Company Deals", noindex: true });
   const { adminAgentSummary } = useSignalRContext();
   const [deals, setDeals] = useState<CompanyDeal[]>([]);
   const [plans, setPlans] = useState<PlanInfo[]>([]);

@@ -1,7 +1,15 @@
 import { MarketingNav } from "../components/MarketingNav";
 import { Footer } from "../components/Footer";
+import { useSEO } from "../hooks/useSEO";
 
 export function PrivacyPolicy() {
+  useSEO({
+    title: "Privacy Policy",
+    description:
+      "ClaudeNest privacy policy. Learn what data we collect, how we protect your information, and why your source code never leaves your machine.",
+    canonicalPath: "/privacy",
+  });
+
   return (
     <div className="flex min-h-screen flex-col">
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[100] focus:rounded-lg focus:bg-nest-500 focus:px-4 focus:py-2 focus:text-white">

@@ -8,8 +8,10 @@ import { PricingCards } from "../components/PricingCards";
 import { getPlanIntent, clearPlanIntent } from "../utils/planIntent";
 import { getCouponIntent, clearCouponIntent } from "../utils/couponIntent";
 import type { PlanInfo, CouponValidation } from "../types";
+import { useSEO } from "../hooks/useSEO";
 
 export function PlanSelection() {
+  useSEO({ title: "Choose a Plan", noindex: true });
   const { user } = useUserContext();
   const hasActiveSubscription = user?.account?.hasStripeSubscription &&
     (user.account.subscriptionStatus === "Active" || user.account.subscriptionStatus === "Trialing" || user.account.subscriptionStatus === "PastDue") &&

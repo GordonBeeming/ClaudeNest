@@ -20,6 +20,8 @@ import { isAuth0Configured } from "../config";
 import { MarketingNav } from "../components/MarketingNav";
 import { Footer } from "../components/Footer";
 import { PricingCards } from "../components/PricingCards";
+import { JsonLd } from "../components/JsonLd";
+import { useSEO } from "../hooks/useSEO";
 import { setPlanIntent } from "../utils/planIntent";
 import { getCouponIntent } from "../utils/couponIntent";
 import type { PlanInfo, CouponValidation } from "../types";
@@ -294,7 +296,44 @@ function PricingSectionInner({ onLogin }: { onLogin?: (planId: string) => void }
   );
 }
 
+const organizationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "ClaudeNest",
+  url: "https://claudenest.com",
+  logo: "https://claudenest.com/logo.png",
+  description:
+    "A lightweight remote launcher for Claude Code. Browse dev folders, start sessions, and interact through Anthropic's native remote-control.",
+  contactPoint: {
+    "@type": "ContactPoint",
+    email: "support@claudenest.com",
+    contactType: "customer support",
+  },
+};
+
+const softwareJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "ClaudeNest",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "Windows, macOS, Linux",
+  url: "https://claudenest.com",
+  description:
+    "Launch Claude Code sessions from anywhere. Browse dev folders, start remote sessions, and code through Anthropic's native remote-control.",
+  offers: {
+    "@type": "AggregateOffer",
+    priceCurrency: "USD",
+    availability: "https://schema.org/InStock",
+  },
+};
+
 function HomePageContent() {
+  useSEO({
+    canonicalPath: "/",
+    description:
+      "Launch Claude Code sessions from anywhere. Browse dev folders, start remote sessions, and code through Anthropic's native remote-control — no source code ever leaves your machine.",
+  });
+
   useEffect(() => {
     if (getCouponIntent()) {
       // Delay slightly so the pricing section has rendered
@@ -309,6 +348,8 @@ function HomePageContent() {
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[100] focus:rounded-lg focus:bg-nest-500 focus:px-4 focus:py-2 focus:text-white">
         Skip to content
       </a>
+      <JsonLd data={organizationJsonLd} />
+      <JsonLd data={softwareJsonLd} />
       <MarketingNav />
       <main id="main-content" className="flex-1">
         <HeroSection />

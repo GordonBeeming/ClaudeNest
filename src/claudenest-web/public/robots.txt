@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Allow: /privacy
+Disallow: /dashboard
+Disallow: /agents/
+Disallow: /account
+Disallow: /plans
+Disallow: /admin/
+
+Sitemap: https://claudenest.com/sitemap.xml

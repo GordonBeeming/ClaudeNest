@@ -7,8 +7,10 @@ import type { CouponInfo, PlanInfo, DiscountType } from "../../types";
 import { formatDiscountDescription } from "../../types";
 import { PlanPicker } from "../../components/PlanPicker";
 import { ScrollableTable } from "../../components/ScrollableTable";
+import { useSEO } from "../../hooks/useSEO";
 
 export function CouponManagement() {
+  useSEO({ title: "Admin - Coupons", noindex: true });
   const [coupons, setCoupons] = useState<CouponInfo[]>([]);
   const [plans, setPlans] = useState<PlanInfo[]>([]);
   const [loading, setLoading] = useState(true);

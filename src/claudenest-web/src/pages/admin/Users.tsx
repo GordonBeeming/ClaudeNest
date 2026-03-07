@@ -18,10 +18,12 @@ import { Select } from "../../components/Select";
 import { StatusBadge, ActionsDropdown } from "../../components/AdminUserTable";
 import { ScrollableTable } from "../../components/ScrollableTable";
 import { useSignalRContext } from "../../contexts/SignalRContext";
+import { useSEO } from "../../hooks/useSEO";
 
 const PAGE_SIZE = 25;
 
 export function Users() {
+  useSEO({ title: "Admin - Users", noindex: true });
   const { adminAgentSummary } = useSignalRContext();
   const [users, setUsers] = useState<AdminUserInfo[]>([]);
   const [totalCount, setTotalCount] = useState(0);
