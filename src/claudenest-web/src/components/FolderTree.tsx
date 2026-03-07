@@ -11,6 +11,7 @@ import {
   StarOff,
   Palette,
   X,
+  MoreVertical,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useSignalRContext } from "../contexts/SignalRContext";
@@ -131,6 +132,9 @@ function FolderNode({
   const [children, setChildren] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showOverflow, setShowOverflow] = useState(false);
+  const overflowRef = useRef<HTMLDivElement>(null);
+  useClickOutside(overflowRef, () => setShowOverflow(false));
   const autoExpandTriggered = useRef(false);
 
   const pref = preferences?.get(path);
@@ -205,16 +209,20 @@ function FolderNode({
         )}
 
         <span className="min-w-0 truncate text-sm">{name}</span>
+        {pref?.isFavorite && (
+          <Star className="h-3 w-3 shrink-0 fill-amber-400 text-amber-400 [@media(hover:hover)]:hidden" />
+        )}
 
-        {/* Action buttons — always visible on touch, hover-reveal on desktop */}
-          <div className="ml-auto flex shrink-0 items-center gap-1 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100">
+        {/* Action buttons — desktop: all inline on hover; touch: overflow menu + launch */}
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            {/* Desktop hover-reveal: star, palette inline */}
             {onToggleFavorite && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleFavorite(path, pref);
                 }}
-                className="rounded-md p-2 sm:p-0.5 text-gray-400 hover:text-amber-500 dark:text-gray-500 dark:hover:text-amber-400"
+                className="hidden rounded-md p-0.5 text-gray-400 hover:text-amber-500 dark:text-gray-500 dark:hover:text-amber-400 [@media(hover:hover)]:group-hover:inline-flex"
                 title={pref?.isFavorite ? "Remove from favorites" : "Add to favorites"}
               >
                 {pref?.isFavorite ? (
@@ -226,13 +234,13 @@ function FolderNode({
             )}
 
             {onSetColor && (
-              <div className="relative">
+              <div className="relative hidden [@media(hover:hover)]:group-hover:inline-flex">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowColorPicker((s) => !s);
                   }}
-                  className="rounded-md p-2 sm:p-0.5 text-gray-400 hover:text-nest-500 dark:text-gray-500 dark:hover:text-nest-400"
+                  className="rounded-md p-0.5 text-gray-400 hover:text-nest-500 dark:text-gray-500 dark:hover:text-nest-400"
                   title="Set folder color"
                 >
                   <Palette className="h-3.5 w-3.5" />
@@ -247,38 +255,98 @@ function FolderNode({
               </div>
             )}
 
-            {!isOnline && (
-              <span className="flex items-center gap-1 rounded-md text-xs font-medium text-red-500 dark:text-red-400">
-                Offline
-              </span>
+            {/* Touch: overflow menu for star + palette */}
+            {(onToggleFavorite || onSetColor) && (
+              <div className="relative [@media(hover:hover)]:hidden" ref={overflowRef}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowOverflow((s) => !s);
+                  }}
+                  className="rounded-md p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </button>
+                {showOverflow && (
+                  <div
+                    className="absolute right-0 top-full z-50 mt-1 min-w-max rounded-lg border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-800"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {onToggleFavorite && (
+                      <button
+                        onClick={() => {
+                          onToggleFavorite(path, pref);
+                          setShowOverflow(false);
+                        }}
+                        className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                      >
+                        {pref?.isFavorite ? (
+                          <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                        ) : (
+                          <StarOff className="h-4 w-4 text-gray-400" />
+                        )}
+                        {pref?.isFavorite ? "Remove favorite" : "Add favorite"}
+                      </button>
+                    )}
+                    {onSetColor && (
+                      <button
+                        onClick={() => {
+                          setShowOverflow(false);
+                          setShowColorPicker(true);
+                        }}
+                        className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                      >
+                        <Palette className="h-4 w-4 text-gray-400" />
+                        Set color
+                      </button>
+                    )}
+                  </div>
+                )}
+                {showColorPicker && (
+                  <ColorPicker
+                    currentColor={folderColor}
+                    onSelect={(color) => onSetColor!(path, color, pref)}
+                    onClose={() => setShowColorPicker(false)}
+                  />
+                )}
+              </div>
             )}
 
-            {isOnline && !blocked && !atSessionLimit && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onLaunch(path);
-                }}
-                className="flex items-center gap-1 rounded-md bg-nest-500 px-3 py-2 sm:px-2 sm:py-0.5 text-xs font-medium text-white hover:bg-nest-600"
-              >
-                <Play className="h-3 w-3" />
-                Launch
-              </button>
-            )}
+            {/* Status badges and launch — always visible, hover-reveal on desktop */}
+            <div className="flex items-center gap-1 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100">
+              {!isOnline && (
+                <span className="flex items-center gap-1 rounded-md text-xs font-medium text-red-500 dark:text-red-400">
+                  Offline
+                </span>
+              )}
 
-            {isOnline && !blocked && atSessionLimit && (
-              <span className="flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs text-amber-600 dark:bg-amber-950/50 dark:text-amber-400">
-                <Ban className="h-3 w-3" />
-                Session limit reached
-              </span>
-            )}
+              {isOnline && !blocked && !atSessionLimit && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onLaunch(path);
+                  }}
+                  className="flex items-center gap-1 rounded-md bg-nest-500 px-3 py-2 sm:px-2 sm:py-0.5 text-xs font-medium text-white hover:bg-nest-600"
+                >
+                  <Play className="h-3 w-3" />
+                  Launch
+                </button>
+              )}
 
-            {isOnline && blocked && (
-              <span className="flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                <Ban className="h-3 w-3" />
-                Session active
-              </span>
-            )}
+              {isOnline && !blocked && atSessionLimit && (
+                <span className="flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs text-amber-600 dark:bg-amber-950/50 dark:text-amber-400">
+                  <Ban className="h-3 w-3" />
+                  Session limit reached
+                </span>
+              )}
+
+              {isOnline && blocked && (
+                <span className="flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                  <Ban className="h-3 w-3" />
+                  Session active
+                </span>
+              )}
+            </div>
           </div>
       </div>
 
