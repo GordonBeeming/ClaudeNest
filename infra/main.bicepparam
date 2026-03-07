@@ -6,7 +6,7 @@ param environmentName = 'dev'
 
 // Auth0 configuration
 param auth0Authority = '<AUTH0_AUTHORITY>'  // e.g., https://your-tenant.auth0.com/
-param auth0Audience = 'https://api.claudenest.com'
+param auth0Audience = 'https://api.claudenest.app'
 param auth0Domain = '<AUTH0_DOMAIN>'  // e.g., your-tenant.auth0.com
 param auth0ClientId = '<AUTH0_CLIENT_ID>'
 

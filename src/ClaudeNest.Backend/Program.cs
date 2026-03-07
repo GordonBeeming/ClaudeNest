@@ -79,6 +79,9 @@ builder.Services.AddSingleton(TimeProvider.System);
 // Agent online tracking (in-memory)
 builder.Services.AddSingleton<AgentTracker>();
 
+// Periodic metrics logging
+builder.Services.AddHostedService<MetricsService>();
+
 // SignalR — use camelCase + string enums to match frontend expectations
 var signalRBuilder = builder.Services.AddSignalR(options =>
     {

@@ -147,7 +147,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         options.Authority = "https://YOUR_TENANT.auth0.com/";
-        options.Audience = "https://api.claudenest.com";
+        options.Audience = "https://api.claudenest.app";
     });
 ```
 
@@ -232,7 +232,7 @@ File: `~/.claudenest/credentials.json` (generated during install, owner-only per
 {
     "agentId": "a1b2c3d4-...",
     "secret": "base64-encoded-256-bit-key",
-    "backendUrl": "https://api.claudenest.com"
+    "backendUrl": "https://api.claudenest.app"
 }
 ```
 

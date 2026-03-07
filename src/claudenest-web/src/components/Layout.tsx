@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
-import { Bird, Wifi, WifiOff, LogOut, Settings, ChevronDown, Shield, UsersRound, Tag, Handshake, Monitor } from "lucide-react";
+import { Bird, Wifi, WifiOff, LogOut, Settings, ChevronDown, Shield, UsersRound, Tag, Handshake, Monitor, Activity } from "lucide-react";
 import { useSignalR } from "../hooks/useSignalR";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { SignalRContext } from "../contexts/SignalRContext";
@@ -189,9 +189,15 @@ export function Layout() {
               )}
 
               {isAdmin && adminAgentSummary && (
-                <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                  <Monitor className="h-3 w-3" />
-                  {adminAgentSummary.global.online}/{adminAgentSummary.global.installed}/{adminAgentSummary.global.maxAgents}
+                <span className="flex items-center gap-1.5 text-xs font-medium">
+                  <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                    <Monitor className="h-3 w-3" />
+                    {adminAgentSummary.global.online}/{adminAgentSummary.global.installed}/{adminAgentSummary.global.maxAgents}
+                  </span>
+                  <span className="flex items-center gap-1 rounded-full bg-nest-50 px-2 py-0.5 text-nest-700 dark:bg-nest-900/30 dark:text-nest-400">
+                    <Activity className="h-3 w-3" />
+                    {adminAgentSummary.global.activeSessions}/{adminAgentSummary.global.maxSessions}
+                  </span>
                 </span>
               )}
 

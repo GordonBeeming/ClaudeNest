@@ -3,7 +3,7 @@ import { useEffect } from "react";
 const SITE_NAME = "ClaudeNest";
 const DEFAULT_DESCRIPTION =
   "Launch Claude Code sessions from anywhere. Browse dev folders, start remote sessions, and code through Anthropic's native remote-control — no source code ever leaves your machine.";
-const DEFAULT_OG_IMAGE = "https://claudenest.com/logo.png";
+const DEFAULT_OG_IMAGE = "https://claudenest.app/logo.png";
 
 interface SEOOptions {
   title?: string;
@@ -67,7 +67,7 @@ export function useSEO({
 
     // Canonical
     if (canonicalPath !== undefined) {
-      const canonicalUrl = `https://claudenest.com${canonicalPath}`;
+      const canonicalUrl = `https://claudenest.app${canonicalPath}`;
       setLinkTag("canonical", canonicalUrl);
       setMetaTag("og:url", canonicalUrl, "property");
     }

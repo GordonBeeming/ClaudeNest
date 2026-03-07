@@ -397,7 +397,7 @@ export function AdminUserTable({ domain, plans, coupons, compact }: AdminUserTab
                     if (!stats) return "-";
                     return (
                       <span className="font-mono text-xs">
-                        {stats.online}/{stats.installed}/{stats.maxAgents}
+                        {stats.online}/{stats.installed}/{stats.maxAgents}-{stats.activeSessions}/{stats.maxSessions}
                       </span>
                     );
                   })()}

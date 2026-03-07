@@ -316,7 +316,7 @@ export function AccountPage() {
                 </button>
                 <span className="text-sm text-gray-400 dark:text-gray-500">
                   To change plans, cancel your current subscription first or{" "}
-                  <a href="mailto:support@claudenest.com" className="text-nest-600 hover:underline dark:text-nest-400">
+                  <a href="mailto:support@claudenest.app" className="text-nest-600 hover:underline dark:text-nest-400">
                     contact support
                   </a>
                 </span>

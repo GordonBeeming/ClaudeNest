@@ -63,7 +63,7 @@ Auth0 is only needed when running the ProdLike profile. In Development mode, aut
 dotnet user-secrets set "Auth0:Domain" "your-tenant.auth0.com" --project src/ClaudeNest.AppHost
 dotnet user-secrets set "Auth0:ClientId" "your-spa-client-id" --project src/ClaudeNest.AppHost
 dotnet user-secrets set "Auth0:Authority" "https://your-tenant.auth0.com/" --project src/ClaudeNest.AppHost
-dotnet user-secrets set "Auth0:Audience" "https://api.claudenest.com" --project src/ClaudeNest.AppHost
+dotnet user-secrets set "Auth0:Audience" "https://api.claudenest.app" --project src/ClaudeNest.AppHost
 ```
 
 The AppHost passes these values as environment variables to both the backend (for JWT validation) and the web frontend (for the Auth0 SPA SDK).
@@ -75,7 +75,7 @@ If you are running the frontend outside of Aspire, create `src/claudenest-web/.e
 ```
 VITE_AUTH0_DOMAIN=your-tenant.auth0.com
 VITE_AUTH0_CLIENT_ID=your-spa-client-id
-VITE_AUTH0_AUDIENCE=https://api.claudenest.com
+VITE_AUTH0_AUDIENCE=https://api.claudenest.app
 ```
 
 When running via Aspire, these values are injected automatically from user secrets -- you do not need the `.env.local` file.

@@ -300,13 +300,13 @@ const organizationJsonLd = {
   "@context": "https://schema.org",
   "@type": "Organization",
   name: "ClaudeNest",
-  url: "https://claudenest.com",
-  logo: "https://claudenest.com/logo.png",
+  url: "https://claudenest.app",
+  logo: "https://claudenest.app/logo.png",
   description:
     "A lightweight remote launcher for Claude Code. Browse dev folders, start sessions, and interact through Anthropic's native remote-control.",
   contactPoint: {
     "@type": "ContactPoint",
-    email: "support@claudenest.com",
+    email: "support@claudenest.app",
     contactType: "customer support",
   },
 };
@@ -317,7 +317,7 @@ const softwareJsonLd = {
   name: "ClaudeNest",
   applicationCategory: "DeveloperApplication",
   operatingSystem: "Windows, macOS, Linux",
-  url: "https://claudenest.com",
+  url: "https://claudenest.app",
   description:
     "Launch Claude Code sessions from anywhere. Browse dev folders, start remote sessions, and code through Anthropic's native remote-control.",
   offers: {

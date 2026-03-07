@@ -81,6 +81,15 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
             })
             .ToListAsync();
 
+        // Seed active sessions into the in-memory tracker
+        if (agent is not null)
+        {
+            foreach (var session in activeSessions)
+            {
+                agentTracker.TrackSessionActive(session.SessionId, agent.AccountId);
+            }
+        }
+
         var latestVersion = configuration["Agent:LatestVersion"];
         // Don't send update info if the version is unset or the default placeholder
         var hasRealVersion = !string.IsNullOrEmpty(latestVersion) && latestVersion != "1.0.0";
@@ -123,9 +132,31 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
             await db.SaveChangesAsync();
         }
 
+        // Track session state in memory for admin summary
+        var isActive = update.State is Shared.Enums.SessionState.Running
+            or Shared.Enums.SessionState.Starting
+            or Shared.Enums.SessionState.Requested;
+        if (isActive)
+        {
+            var accountId = await db.Agents
+                .Where(a => a.Id == update.AgentId)
+                .Select(a => a.AccountId)
+                .FirstOrDefaultAsync();
+            if (accountId != Guid.Empty)
+            {
+                agentTracker.TrackSessionActive(update.SessionId, accountId);
+            }
+        }
+        else
+        {
+            agentTracker.TrackSessionInactive(update.SessionId);
+        }
+
         // Relay session status to web clients watching this agent
         await Clients.Group($"user:{update.AgentId}")
             .SendAsync("SessionStatusChanged", update);
+
+        await BroadcastAdminAgentSummaryAsync();
     }
 
     public async Task DirectoryListing(DirectoryListingResponse response)
@@ -158,7 +189,23 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
         if (agent is not null)
         {
             agent.LastSeenAt = timeProvider.GetUtcNow();
+
+            // Ensure agent is marked online and tracked (handles backend restart scenarios
+            // where in-memory tracker is wiped but agent stays connected via Azure SignalR)
+            if (!agent.IsOnline)
+            {
+                agent.IsOnline = true;
+                await Clients.Group($"user:{agent.Id}")
+                    .SendAsync("AgentStatusChanged", agent.Id, true);
+            }
+
             await db.SaveChangesAsync();
+
+            if (!agentTracker.IsTracked(agent.Id))
+            {
+                agentTracker.TrackOnline(agent.Id, agent.AccountId);
+                await BroadcastAdminAgentSummaryAsync();
+            }
         }
         else
         {
@@ -347,6 +394,9 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
 
             await db.SaveChangesAsync();
 
+            // Untrack crashed sessions from in-memory tracker
+            agentTracker.RemoveSessionsForAccount(agent.AccountId, staleSessions.Select(s => s.Id));
+
             // Notify web clients
             await Clients.Group($"user:{agent.Id}")
                 .SendAsync("AgentStatusChanged", agent.Id, false);
@@ -394,6 +444,7 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
     private async Task<object> BuildAdminAgentSummaryAsync()
     {
         var onlineCounts = agentTracker.GetOnlineCountsByAccount();
+        var sessionCounts = agentTracker.GetActiveSessionCountsByAccount();
 
         var accountStats = await db.Agents
             .GroupBy(a => a.AccountId)
@@ -401,27 +452,35 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
             {
                 AccountId = g.Key,
                 Installed = g.Count(),
-                MaxAgents = g.First().Account.Plan != null ? g.First().Account.Plan!.MaxAgents : 0
+                MaxAgents = g.First().Account.Plan != null ? g.First().Account.Plan!.MaxAgents : 0,
+                MaxSessions = g.First().Account.Plan != null ? g.First().Account.Plan!.MaxSessions : 0
             })
             .ToListAsync();
 
         var accounts = new Dictionary<string, object>();
         var globalOnline = 0;
         var globalInstalled = 0;
-        var globalMax = 0;
+        var globalMaxAgents = 0;
+        var globalActiveSessions = 0;
+        var globalMaxSessions = 0;
 
         foreach (var stat in accountStats)
         {
             var online = onlineCounts.GetValueOrDefault(stat.AccountId, 0);
+            var activeSessions = sessionCounts.GetValueOrDefault(stat.AccountId, 0);
             globalOnline += online;
             globalInstalled += stat.Installed;
-            globalMax += stat.MaxAgents;
+            globalMaxAgents += stat.MaxAgents;
+            globalActiveSessions += activeSessions;
+            globalMaxSessions += stat.MaxSessions;
 
             accounts[stat.AccountId.ToString()] = new
             {
                 online,
                 installed = stat.Installed,
-                maxAgents = stat.MaxAgents
+                maxAgents = stat.MaxAgents,
+                activeSessions,
+                maxSessions = stat.MaxSessions
             };
         }
 
@@ -431,7 +490,9 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
             {
                 online = globalOnline,
                 installed = globalInstalled,
-                maxAgents = globalMax
+                maxAgents = globalMaxAgents,
+                activeSessions = globalActiveSessions,
+                maxSessions = globalMaxSessions
             },
             accounts
         };

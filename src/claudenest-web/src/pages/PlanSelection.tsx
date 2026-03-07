@@ -138,7 +138,7 @@ export function PlanSelection() {
           You have an active subscription. To change plans, cancel your current subscription from{" "}
           <Link to="/account" className="font-medium underline hover:no-underline">Account settings</Link>
           {" "}first, or{" "}
-          <a href="mailto:support@claudenest.com" className="font-medium underline hover:no-underline">contact support</a>
+          <a href="mailto:support@claudenest.app" className="font-medium underline hover:no-underline">contact support</a>
           {" "}for assistance.
         </div>
       )}

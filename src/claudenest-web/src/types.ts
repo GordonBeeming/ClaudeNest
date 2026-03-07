@@ -155,6 +155,8 @@ export interface AdminAgentAccountStats {
   online: number;
   installed: number;
   maxAgents: number;
+  activeSessions: number;
+  maxSessions: number;
 }
 
 export interface AdminAgentSummary {

@@ -249,15 +249,17 @@ export function CompanyDeals() {
                                 acc.online += s.online;
                                 acc.installed += s.installed;
                                 acc.maxAgents += s.maxAgents;
+                                acc.activeSessions += s.activeSessions;
+                                acc.maxSessions += s.maxSessions;
                               }
                               return acc;
                             },
-                            { online: 0, installed: 0, maxAgents: 0 },
+                            { online: 0, installed: 0, maxAgents: 0, activeSessions: 0, maxSessions: 0 },
                           );
                           if (agg.installed === 0 && agg.maxAgents === 0) return "-";
                           return (
                             <span className="font-mono text-xs">
-                              {agg.online}/{agg.installed}/{agg.maxAgents}
+                              {agg.online}/{agg.installed}/{agg.maxAgents}-{agg.activeSessions}/{agg.maxSessions}
                             </span>
                           );
                         })()}

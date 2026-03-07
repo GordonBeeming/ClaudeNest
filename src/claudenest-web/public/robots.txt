@@ -7,4 +7,4 @@ Disallow: /account
 Disallow: /plans
 Disallow: /admin/
 
-Sitemap: https://claudenest.com/sitemap.xml
+Sitemap: https://claudenest.app/sitemap.xml

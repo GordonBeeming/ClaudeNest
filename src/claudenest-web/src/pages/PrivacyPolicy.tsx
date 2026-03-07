@@ -153,8 +153,8 @@ export function PrivacyPolicy() {
             </h2>
             <p className="mt-3">
               If you have questions about this privacy policy, please contact us at{" "}
-              <a href="mailto:support@claudenest.com" className="font-medium text-nest-600 hover:text-nest-500 dark:text-nest-400">
-                support@claudenest.com
+              <a href="mailto:support@claudenest.app" className="font-medium text-nest-600 hover:text-nest-500 dark:text-nest-400">
+                support@claudenest.app
               </a>{" "}
               or open an issue on{" "}
               <a href="https://github.com/GordonBeeming/ClaudeNest/issues" target="_blank" rel="noopener noreferrer" className="font-medium text-nest-600 hover:text-nest-500 dark:text-nest-400">
