@@ -14,6 +14,10 @@ public sealed class MacOsServiceInstaller(ILogger logger) : IServiceInstaller
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         ".claudenest", "logs");
 
+    private static string GuiDomain => $"gui/{GetUid()}";
+
+    private static string ServiceTarget => $"{GuiDomain}/{Label}";
+
     public async Task<bool> InstallAsync(string binaryPath, ServiceInstallOptions? options = null, CancellationToken ct = default)
     {
         try
@@ -56,13 +60,14 @@ public sealed class MacOsServiceInstaller(ILogger logger) : IServiceInstaller
             await File.WriteAllTextAsync(PlistPath, plist, ct);
             logger.LogInformation("Wrote LaunchAgent plist to {Path}", PlistPath);
 
-            var loadResult = await RunCommandAsync("launchctl", $"load \"{PlistPath}\"", ct);
-            if (!loadResult)
+            // Use modern launchctl bootstrap API (persists across reboots, unlike legacy 'load')
+            var bootstrapResult = await RunCommandAsync("launchctl", $"bootstrap {GuiDomain} \"{PlistPath}\"", ct);
+            if (!bootstrapResult)
             {
-                logger.LogWarning("launchctl load returned non-zero exit code");
+                logger.LogWarning("launchctl bootstrap returned non-zero exit code");
             }
 
-            logger.LogInformation("macOS LaunchAgent installed and loaded");
+            logger.LogInformation("macOS LaunchAgent installed and bootstrapped");
             return true;
         }
         catch (Exception ex)
@@ -76,12 +81,15 @@ public sealed class MacOsServiceInstaller(ILogger logger) : IServiceInstaller
     {
         try
         {
+            // Bootout the service (stops and unregisters it)
+            await RunCommandAsync("launchctl", $"bootout {ServiceTarget}", ct);
+
             if (File.Exists(PlistPath))
             {
-                await RunCommandAsync("launchctl", $"unload \"{PlistPath}\"", ct);
                 File.Delete(PlistPath);
-                logger.LogInformation("macOS LaunchAgent uninstalled");
             }
+
+            logger.LogInformation("macOS LaunchAgent uninstalled");
             return true;
         }
         catch (Exception ex)
@@ -95,8 +103,8 @@ public sealed class MacOsServiceInstaller(ILogger logger) : IServiceInstaller
     {
         try
         {
-            await RunCommandAsync("launchctl", $"unload \"{PlistPath}\"", ct);
-            await RunCommandAsync("launchctl", $"load \"{PlistPath}\"", ct);
+            // kickstart -k forces a restart of the service
+            await RunCommandAsync("launchctl", $"kickstart -k {ServiceTarget}", ct);
             logger.LogInformation("macOS LaunchAgent restarted");
             return true;
         }
@@ -117,10 +125,10 @@ public sealed class MacOsServiceInstaller(ILogger logger) : IServiceInstaller
                 return false;
             }
 
-            // Unload, rewrite plist with new path, reload
-            await RunCommandAsync("launchctl", $"unload \"{PlistPath}\"", ct);
+            // Bootout the current service, rewrite plist, bootstrap with new path
+            await RunCommandAsync("launchctl", $"bootout {ServiceTarget}", ct);
 
-            // Re-install with new binary path (rewrites the plist)
+            // Re-install with new binary path (rewrites the plist and bootstraps)
             await InstallAsync(newBinaryPath, ct: ct);
 
             logger.LogInformation("macOS LaunchAgent binary path updated to {Path}", newBinaryPath);
@@ -143,7 +151,7 @@ public sealed class MacOsServiceInstaller(ILogger logger) : IServiceInstaller
             var psi = new ProcessStartInfo
             {
                 FileName = "launchctl",
-                Arguments = $"list {Label}",
+                Arguments = $"print {ServiceTarget}",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -151,12 +159,38 @@ public sealed class MacOsServiceInstaller(ILogger logger) : IServiceInstaller
             };
             using var process = Process.Start(psi);
             if (process is null) return false;
+            var output = await process.StandardOutput.ReadToEndAsync(ct);
             await process.WaitForExitAsync(ct);
-            return process.ExitCode == 0;
+            // Service is running if print succeeds and output contains a pid
+            return process.ExitCode == 0 && output.Contains("pid = ", StringComparison.OrdinalIgnoreCase);
         }
         catch
         {
             return false;
+        }
+    }
+
+    private static uint GetUid()
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "id",
+                Arguments = "-u",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true
+            };
+            using var process = Process.Start(psi);
+            if (process is null) return 501; // fallback to common default
+            var output = process.StandardOutput.ReadToEnd().Trim();
+            process.WaitForExit();
+            return uint.TryParse(output, out var uid) ? uid : 501;
+        }
+        catch
+        {
+            return 501;
         }
     }
 

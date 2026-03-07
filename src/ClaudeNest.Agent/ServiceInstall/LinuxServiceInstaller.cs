@@ -25,7 +25,7 @@ public sealed class LinuxServiceInstaller(ILogger logger) : IServiceInstaller
                 [Service]
                 Type=simple
                 ExecStart={binaryPath} run
-                Restart=on-failure
+                Restart=always
                 RestartSec=10
                 Environment=DOTNET_ROOT=%h/.dotnet
 
@@ -110,7 +110,7 @@ public sealed class LinuxServiceInstaller(ILogger logger) : IServiceInstaller
                 [Service]
                 Type=simple
                 ExecStart={newBinaryPath} run
-                Restart=on-failure
+                Restart=always
                 RestartSec=10
                 Environment=DOTNET_ROOT=%h/.dotnet
 
