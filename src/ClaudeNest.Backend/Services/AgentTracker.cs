@@ -4,25 +4,38 @@ namespace ClaudeNest.Backend.Services;
 
 public class AgentTracker
 {
-    private readonly ConcurrentDictionary<Guid, Guid> _onlineAgents = new(); // agentId → accountId
+    private readonly ConcurrentDictionary<Guid, (Guid AccountId, string ConnectionId)> _onlineAgents = new();
     private readonly ConcurrentDictionary<Guid, Guid> _activeSessions = new(); // sessionId → accountId
 
-    public void TrackOnline(Guid agentId, Guid accountId)
+    public void TrackOnline(Guid agentId, Guid accountId, string connectionId)
     {
-        _onlineAgents[agentId] = accountId;
+        _onlineAgents[agentId] = (accountId, connectionId);
     }
 
     public bool IsTracked(Guid agentId) => _onlineAgents.ContainsKey(agentId);
 
-    public void TrackOffline(Guid agentId)
+    /// <summary>
+    /// Removes agent from online tracking only if the connectionId matches.
+    /// Returns true if the agent was removed, false if the connectionId didn't match
+    /// (meaning a newer connection already replaced it).
+    /// </summary>
+    public bool TrackOffline(Guid agentId, string connectionId)
     {
-        _onlineAgents.TryRemove(agentId, out _);
+        if (!_onlineAgents.TryGetValue(agentId, out var current))
+            return false;
+
+        if (current.ConnectionId != connectionId)
+            return false;
+
+        // Atomic remove: only succeeds if the value still matches
+        return ((ICollection<KeyValuePair<Guid, (Guid, string)>>)_onlineAgents)
+            .Remove(new KeyValuePair<Guid, (Guid, string)>(agentId, current));
     }
 
     public Dictionary<Guid, int> GetOnlineCountsByAccount()
     {
         return _onlineAgents
-            .GroupBy(kvp => kvp.Value)
+            .GroupBy(kvp => kvp.Value.AccountId)
             .ToDictionary(g => g.Key, g => g.Count());
     }
 
@@ -54,4 +67,5 @@ public class AgentTracker
     public int GetGlobalOnlineAgentCount() => _onlineAgents.Count;
 
     public int GetGlobalActiveSessionCount() => _activeSessions.Count;
+
 }

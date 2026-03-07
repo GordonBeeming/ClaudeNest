@@ -65,7 +65,7 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
         // Track agent online for admin summary
         if (agent is not null)
         {
-            agentTracker.TrackOnline(agentInfo.AgentId, agent.AccountId);
+            agentTracker.TrackOnline(agentInfo.AgentId, agent.AccountId, connectionId);
             await BroadcastAdminAgentSummaryAsync();
         }
 
@@ -203,7 +203,7 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
 
             if (!agentTracker.IsTracked(agent.Id))
             {
-                agentTracker.TrackOnline(agent.Id, agent.AccountId);
+                agentTracker.TrackOnline(agent.Id, agent.AccountId, connectionId);
                 await BroadcastAdminAgentSummaryAsync();
             }
         }
@@ -368,47 +368,63 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         var connId = Context.ConnectionId;
-        var agent = await db.Agents
-            .AsTracking()
-            .FirstOrDefaultAsync(a => a.ConnectionId == connId);
 
-        if (agent is not null)
+        // Atomically mark agent offline only if ConnectionId still matches.
+        // This prevents a stale disconnect (old connection) from overwriting a newer
+        // RegisterAgent that already set a new ConnectionId.
+        var now = timeProvider.GetUtcNow();
+        var agentInfo = await db.Agents
+            .Where(a => a.ConnectionId == connId)
+            .Select(a => new { a.Id, a.AccountId })
+            .FirstOrDefaultAsync();
+
+        if (agentInfo is not null)
         {
-            agent.IsOnline = false;
-            agent.ConnectionId = null;
-            agent.LastSeenAt = timeProvider.GetUtcNow();
+            var rowsAffected = await db.Agents
+                .Where(a => a.Id == agentInfo.Id && a.ConnectionId == connId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(a => a.IsOnline, false)
+                    .SetProperty(a => a.ConnectionId, (string?)null)
+                    .SetProperty(a => a.LastSeenAt, now));
+
+            if (rowsAffected == 0)
+            {
+                // A newer connection already replaced this one — skip cleanup
+                await base.OnDisconnectedAsync(exception);
+                return;
+            }
 
             // Mark any active sessions as crashed since the agent disconnected
             var staleSessions = await db.Sessions
                 .AsTracking()
-                .Where(s => s.AgentId == agent.Id &&
+                .Where(s => s.AgentId == agentInfo.Id &&
                     (s.State == "Running" || s.State == "Starting" || s.State == "Requested"))
                 .ToListAsync();
 
-            var now = timeProvider.GetUtcNow().UtcDateTime;
+            var nowUtc = now.UtcDateTime;
             foreach (var session in staleSessions)
             {
                 session.State = "Crashed";
-                session.EndedAt = now;
+                session.EndedAt = nowUtc;
             }
 
             await db.SaveChangesAsync();
 
             // Untrack crashed sessions from in-memory tracker
-            agentTracker.RemoveSessionsForAccount(agent.AccountId, staleSessions.Select(s => s.Id));
+            agentTracker.RemoveSessionsForAccount(agentInfo.AccountId, staleSessions.Select(s => s.Id));
 
             // Notify web clients
-            await Clients.Group($"user:{agent.Id}")
-                .SendAsync("AgentStatusChanged", agent.Id, false);
+            await Clients.Group($"user:{agentInfo.Id}")
+                .SendAsync("AgentStatusChanged", agentInfo.Id, false);
 
             // Notify about crashed sessions
             foreach (var session in staleSessions)
             {
-                await Clients.Group($"user:{agent.Id}")
+                await Clients.Group($"user:{agentInfo.Id}")
                     .SendAsync("SessionStatusChanged", new SessionStatusUpdate
                     {
                         SessionId = session.Id,
-                        AgentId = agent.Id,
+                        AgentId = agentInfo.Id,
                         Path = session.Path,
                         State = Shared.Enums.SessionState.Crashed,
                         StartedAt = session.StartedAt.UtcDateTime,
@@ -417,9 +433,11 @@ public class NestHub(NestDbContext db, TimeProvider timeProvider, IConfiguration
                     });
             }
 
-            // Track agent offline for admin summary
-            agentTracker.TrackOffline(agent.Id);
-            await BroadcastAdminAgentSummaryAsync();
+            // Track agent offline — only if this connection is still the one in the tracker
+            if (agentTracker.TrackOffline(agentInfo.Id, connId))
+            {
+                await BroadcastAdminAgentSummaryAsync();
+            }
         }
 
         await base.OnDisconnectedAsync(exception);
