@@ -57,14 +57,33 @@ export function ActionsDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
 
   const closeMenu = useCallback(() => setOpen(false), []);
   useClickOutside(ref, closeMenu, open);
 
+  const handleToggle = useCallback(() => {
+    setOpen((prev) => {
+      const opening = !prev;
+      if (opening && buttonRef.current) {
+        const rect = buttonRef.current.getBoundingClientRect();
+        const menuHeight = 200; // approximate max menu height
+        const fitsBelow = rect.bottom + menuHeight < window.innerHeight;
+        setMenuPos({
+          top: fitsBelow ? rect.bottom + 4 : rect.top - menuHeight - 4,
+          left: rect.right - 192, // 192px = w-48
+        });
+      }
+      return opening;
+    });
+  }, []);
+
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen((o) => !o)}
+        ref={buttonRef}
+        onClick={handleToggle}
         disabled={actionLoading === user.id}
         className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
       >
@@ -77,8 +96,11 @@ export function ActionsDropdown({
           </>
         )}
       </button>
-      {open && (
-        <div className="absolute right-0 z-50 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+      {open && menuPos && (
+        <div
+          className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+          style={{ top: menuPos.top, left: menuPos.left }}
+        >
           {user.hasStripeSubscription && (
             <button
               onClick={() => { setOpen(false); onCancelSubscription(user); }}

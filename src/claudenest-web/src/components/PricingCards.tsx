@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { ChevronDown, ChevronUp, Sparkles, Star, Check, Gift } from "lucide-react";
 import { clsx } from "clsx";
 import { addMonths, addDays, format } from "date-fns";
@@ -429,13 +429,26 @@ function OfferCard({
 
 function CouponBadge({ description }: { description: string }) {
   const [open, setOpen] = useState(false);
+  const badgeRef = useRef<HTMLButtonElement>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
+
+  const updatePos = useCallback(() => {
+    if (badgeRef.current) {
+      const rect = badgeRef.current.getBoundingClientRect();
+      setTooltipPos({
+        top: rect.bottom + 8,
+        left: Math.max(8, rect.left + rect.width / 2 - 128), // 128 = half of w-64 (256px)
+      });
+    }
+  }, []);
 
   return (
     <span className="relative inline-block">
       <button
+        ref={badgeRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        onMouseEnter={() => setOpen(true)}
+        onClick={() => { updatePos(); setOpen((v) => !v); }}
+        onMouseEnter={() => { updatePos(); setOpen(true); }}
         onMouseLeave={() => setOpen(false)}
         className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
         aria-label="Offer available"
@@ -443,8 +456,11 @@ function CouponBadge({ description }: { description: string }) {
         <Star className="h-3 w-3 fill-current" aria-hidden="true" />
         Offer
       </button>
-      {open && (
-        <span className="absolute left-1/2 top-full z-10 mt-2 w-64 -translate-x-1/2 rounded-lg border border-gray-200 bg-white p-3 text-left text-xs shadow-lg dark:border-gray-700 dark:bg-gray-800">
+      {open && tooltipPos && (
+        <span
+          className="fixed z-50 w-64 rounded-lg border border-gray-200 bg-white p-3 text-left text-xs shadow-lg dark:border-gray-700 dark:bg-gray-800"
+          style={{ top: tooltipPos.top, left: tooltipPos.left }}
+        >
           <span className="block font-semibold text-gray-900 dark:text-white">
             {description}
           </span>
