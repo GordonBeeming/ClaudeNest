@@ -113,16 +113,51 @@ public sealed class MacOsServiceInstaller(ILogger logger) : IServiceInstaller
     {
         try
         {
-            // kickstart -k forces a restart of the service
-            await RunCommandAsync("launchctl", $"kickstart -k {ServiceTarget}", ct);
-            logger.LogInformation("macOS LaunchAgent restarted");
-            return true;
+            // If only the old plist exists, we need to migrate and bootstrap
+            if (File.Exists(OldPlistPath) && !File.Exists(PlistPath))
+            {
+                logger.LogInformation("Old plist found without new plist — re-installing to migrate");
+                var config = Config.ConfigLoader.LoadConfig();
+                var binaryPath = config.InstalledBinaryPath ?? GetDefaultBinaryPath();
+                return await InstallAsync(binaryPath, ct: ct);
+            }
+
+            // Try kickstart first (works if service is already bootstrapped)
+            var kickstarted = await RunCommandAsync("launchctl", $"kickstart -k {ServiceTarget}", ct);
+            if (kickstarted)
+            {
+                logger.LogInformation("macOS LaunchAgent restarted via kickstart");
+                return true;
+            }
+
+            // kickstart failed — service probably isn't bootstrapped. Bootstrap it.
+            if (File.Exists(PlistPath))
+            {
+                logger.LogInformation("kickstart failed — bootstrapping service from existing plist");
+                var bootstrapped = await RunCommandAsync("launchctl", $"bootstrap {GuiDomain} \"{PlistPath}\"", ct);
+                if (bootstrapped)
+                {
+                    logger.LogInformation("macOS LaunchAgent bootstrapped and started");
+                    return true;
+                }
+                logger.LogWarning("Failed to bootstrap LaunchAgent");
+            }
+
+            return false;
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to restart macOS LaunchAgent");
             return false;
         }
+    }
+
+    private static string GetDefaultBinaryPath()
+    {
+        var binDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".claudenest", "bin");
+        return Path.Combine(binDir, "claudenest-agent");
     }
 
     public async Task<bool> UpdateBinPathAsync(string newBinaryPath, CancellationToken ct = default)
