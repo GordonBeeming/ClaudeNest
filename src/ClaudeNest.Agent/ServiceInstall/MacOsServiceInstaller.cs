@@ -4,11 +4,16 @@ namespace ClaudeNest.Agent.ServiceInstall;
 
 public sealed class MacOsServiceInstaller(ILogger logger) : IServiceInstaller
 {
-    private const string Label = "com.claudenest.agent";
+    private const string Label = "app.claudenest.agent";
+    private const string OldLabel = "com.claudenest.agent";
 
     private static string PlistPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         "Library", "LaunchAgents", $"{Label}.plist");
+
+    private static string OldPlistPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        "Library", "LaunchAgents", $"{OldLabel}.plist");
 
     private static string LogDir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -18,10 +23,15 @@ public sealed class MacOsServiceInstaller(ILogger logger) : IServiceInstaller
 
     private static string ServiceTarget => $"{GuiDomain}/{Label}";
 
+    private static string OldServiceTarget => $"{GuiDomain}/{OldLabel}";
+
     public async Task<bool> InstallAsync(string binaryPath, ServiceInstallOptions? options = null, CancellationToken ct = default)
     {
         try
         {
+            // Migrate from old label (com.claudenest.agent) if it exists
+            await MigrateFromOldLabelAsync(ct);
+
             Directory.CreateDirectory(Path.GetDirectoryName(PlistPath)!);
             Directory.CreateDirectory(LogDir);
 
@@ -141,32 +151,57 @@ public sealed class MacOsServiceInstaller(ILogger logger) : IServiceInstaller
         }
     }
 
-    public bool IsInstalled() => File.Exists(PlistPath);
+    public bool IsInstalled() => File.Exists(PlistPath) || File.Exists(OldPlistPath);
 
     public async Task<bool> IsRunningAsync(CancellationToken ct = default)
     {
         if (!IsInstalled()) return false;
         try
         {
-            var psi = new ProcessStartInfo
+            // Check both old and new service targets
+            foreach (var target in new[] { ServiceTarget, OldServiceTarget })
             {
-                FileName = "launchctl",
-                Arguments = $"print {ServiceTarget}",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-            using var process = Process.Start(psi);
-            if (process is null) return false;
-            var output = await process.StandardOutput.ReadToEndAsync(ct);
-            await process.WaitForExitAsync(ct);
-            // Service is running if print succeeds and output contains a pid
-            return process.ExitCode == 0 && output.Contains("pid = ", StringComparison.OrdinalIgnoreCase);
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "launchctl",
+                    Arguments = $"print {target}",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+                using var process = Process.Start(psi);
+                if (process is null) continue;
+                var output = await process.StandardOutput.ReadToEndAsync(ct);
+                await process.WaitForExitAsync(ct);
+                if (process.ExitCode == 0 && output.Contains("pid = ", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
         catch
         {
             return false;
+        }
+    }
+
+    private async Task MigrateFromOldLabelAsync(CancellationToken ct)
+    {
+        try
+        {
+            if (!File.Exists(OldPlistPath)) return;
+
+            logger.LogInformation("Migrating LaunchAgent from old label {OldLabel} to {NewLabel}", OldLabel, Label);
+
+            // Bootout old service (ignore errors if not registered)
+            await RunCommandAsync("launchctl", $"bootout {OldServiceTarget}", ct);
+
+            File.Delete(OldPlistPath);
+            logger.LogInformation("Removed old LaunchAgent plist at {Path}", OldPlistPath);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Error migrating from old LaunchAgent label");
         }
     }
 

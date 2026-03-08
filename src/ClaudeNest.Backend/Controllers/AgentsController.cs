@@ -170,6 +170,12 @@ public class AgentsController(NestDbContext db, IHubContext<NestHub> hubContext,
         version ??= "1.0.0";
         downloadUrl ??= $"https://github.com/{repoOwner}/{repoName}/releases/download/agent-v{version}/";
 
+        // Skip update if agent is already on the latest version
+        if (agent.Version == version)
+        {
+            return Ok(new { message = $"Agent is already on the latest version (v{version})" });
+        }
+
         var notification = new UpdateAvailableNotification
         {
             LatestVersion = version,

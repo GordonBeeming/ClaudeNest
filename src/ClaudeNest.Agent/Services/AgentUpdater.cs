@@ -165,19 +165,29 @@ public sealed class AgentUpdater
             catch { /* best effort — file may be in use */ }
         }
 
-        // Update config to point to the service binary path
+        // Check if the service binary path has actually changed before updating
         var config = ConfigLoader.LoadConfig();
+        var previousBinaryPath = config.InstalledBinaryPath;
+
+        // Update config to point to the service binary path
         config.InstalledBinaryPath = serviceBinaryPath;
         ConfigLoader.SaveConfig(config);
 
-        // Update service registration with the service binary path
-        using var loggerFactory = LoggerFactory.Create(_ => { });
-        var logger = loggerFactory.CreateLogger("ServiceInstaller");
-        var installer = ServiceInstallerFactory.Create(logger);
-
-        if (installer.IsInstalled())
+        // Only update service registration if the binary path changed.
+        // On macOS/Linux, the service always uses the stable unversioned path, so
+        // the path doesn't change between updates. Calling UpdateBinPathAsync
+        // unnecessarily on macOS triggers launchctl bootout which kills the running
+        // agent process before bootstrap can re-register the service.
+        if (previousBinaryPath != serviceBinaryPath)
         {
-            await installer.UpdateBinPathAsync(serviceBinaryPath);
+            using var loggerFactory = LoggerFactory.Create(_ => { });
+            var logger = loggerFactory.CreateLogger("ServiceInstaller");
+            var installer = ServiceInstallerFactory.Create(logger);
+
+            if (installer.IsInstalled())
+            {
+                await installer.UpdateBinPathAsync(serviceBinaryPath);
+            }
         }
     }
 
