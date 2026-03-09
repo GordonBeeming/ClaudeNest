@@ -35,7 +35,7 @@ public class AgentWorker(
 
         var directoryBrowser = new DirectoryBrowser(config);
 
-        var logFactory = LoggerFactory.Create(b => b.AddConsole());
+        using var logFactory = LoggerFactory.Create(b => b.AddConsole());
         var sessionManagerLogger = logFactory.CreateLogger<SessionManager>();
         _sessionManager = new SessionManager(config, directoryBrowser, credentials.AgentId, sessionManagerLogger);
 

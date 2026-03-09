@@ -187,7 +187,7 @@ public sealed class SessionManager(
 
             try
             {
-                Process.GetProcessById(session.Pid.Value);
+                using var proc = Process.GetProcessById(session.Pid.Value);
             }
             catch
             {
@@ -220,7 +220,7 @@ public sealed class SessionManager(
         try
         {
             var isWindows = OperatingSystem.IsWindows();
-            var whichProcess = new Process
+            using var whichProcess = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
@@ -273,7 +273,7 @@ public sealed class SessionManager(
     {
         try
         {
-            var process = new Process
+            using var process = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
@@ -361,15 +361,20 @@ public sealed class SessionManager(
             session.Process = process;
             session.Pid = process.Id;
 
-            // Read stderr line-by-line so errors are reported in real-time
+            // Read stderr line-by-line so errors are reported in real-time.
+            // Keep only the last N lines to avoid unbounded memory growth.
+            const int maxStderrLines = 50;
             var stderrLines = new List<string>();
-            _ = Task.Run(async () =>
+            var stderrTask = Task.Run(async () =>
             {
                 try
                 {
                     while (await process.StandardError.ReadLineAsync() is { } line)
                     {
                         stderrLines.Add(line);
+                        if (stderrLines.Count > maxStderrLines)
+                            stderrLines.RemoveAt(0);
+
                         logger.LogWarning("Session {SessionId} stderr: {Line}", session.SessionId, line);
 
                         // Report first stderr as error immediately (while process is still running)
@@ -390,7 +395,21 @@ public sealed class SessionManager(
             });
 
             // Drain stdout to prevent buffer deadlock
-            _ = process.StandardOutput.ReadToEndAsync();
+            var stdoutTask = Task.Run(async () =>
+            {
+                try
+                {
+                    var buffer = new char[4096];
+                    while (await process.StandardOutput.ReadAsync(buffer, 0, buffer.Length) > 0)
+                    {
+                        // Discard stdout — just drain the buffer to prevent deadlock
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogDebug(ex, "Stdout drain ended for session {SessionId}", session.SessionId);
+                }
+            });
 
             // Only transition to Running if the process hasn't already exited
             if (!process.HasExited)
@@ -419,8 +438,14 @@ public sealed class SessionManager(
                 await processExit;
             }
 
+            // Wait for reader tasks to finish so all stderr is captured
+            await Task.WhenAll(stderrTask, stdoutTask).ConfigureAwait(false);
+
             if (session.State is SessionState.Stopped or SessionState.Crashed)
+            {
+                process.Dispose();
                 return; // Already handled
+            }
 
             if (stderrLines.Count > 0 && string.IsNullOrEmpty(session.ErrorMessage))
                 session.ErrorMessage = string.Join('\n', stderrLines).Trim();
@@ -431,6 +456,7 @@ public sealed class SessionManager(
             session.EndedAt = DateTime.UtcNow;
             session.ExitCode = process.ExitCode;
             NotifyStatusChanged(session);
+            process.Dispose();
         }
         catch (Exception ex)
         {
