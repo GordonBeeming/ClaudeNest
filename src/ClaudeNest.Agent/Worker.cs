@@ -104,7 +104,8 @@ public class AgentWorker(
 
         _connectionManager.OnStartSession += async (sessionId, path, permissionMode) =>
         {
-            if (!_sessionManager.TryStartSession(sessionId, path, permissionMode, out var error))
+            var (success, error) = await _sessionManager.TryStartSessionAsync(sessionId, path, permissionMode);
+            if (!success)
             {
                 logger.LogWarning("Failed to start session {SessionId}: {Error}", sessionId, error);
                 // Notify the frontend that the session failed to start
@@ -120,10 +121,9 @@ public class AgentWorker(
             }
         };
 
-        _connectionManager.OnStopSession += sessionId =>
+        _connectionManager.OnStopSession += async sessionId =>
         {
-            _sessionManager.TryStopSession(sessionId);
-            return Task.CompletedTask;
+            await _sessionManager.TryStopSessionAsync(sessionId);
         };
 
         _connectionManager.OnGetSessions += async () =>
@@ -269,7 +269,7 @@ public class AgentWorker(
             try
             {
                 await heartbeatTimer.WaitForNextTickAsync(stoppingToken);
-                _sessionManager.HealthCheck();
+                await _sessionManager.HealthCheckAsync();
                 await _connectionManager.SendHeartbeatAsync();
 
                 // Check if a deferred update can now be applied
