@@ -14,16 +14,18 @@ public sealed class SessionManager(
 {
     private readonly ConcurrentDictionary<Guid, ManagedSession> _sessions = new();
 
+    // Throttle stderr-triggered notifications to avoid flooding SignalR with fire-and-forget sends.
+    // Key: sessionId, Value: last notification time
+    private readonly ConcurrentDictionary<Guid, DateTime> _lastStderrNotification = new();
+    private static readonly TimeSpan StderrNotificationThrottle = TimeSpan.FromSeconds(3);
+
     public event Func<SessionStatusUpdate, Task>? OnSessionStatusChanged;
 
-    public bool TryStartSession(Guid sessionId, string path, string? permissionMode, out string? error)
+    public async Task<(bool Success, string? Error)> TryStartSessionAsync(Guid sessionId, string path, string? permissionMode)
     {
-        error = null;
-
         if (!directoryBrowser.IsPathAllowed(path))
         {
-            error = "Path is not allowed";
-            return false;
+            return (false, "Path is not allowed");
         }
 
         var activeSessions = _sessions.Values
@@ -39,8 +41,7 @@ public sealed class SessionManager(
 
         if (overlapping is not null)
         {
-            error = $"An active session already covers this path ({overlapping.Path})";
-            return false;
+            return (false, $"An active session already covers this path ({overlapping.Path})");
         }
 
         var resolvedPath = Path.GetFullPath(path);
@@ -54,16 +55,15 @@ public sealed class SessionManager(
 
         if (!_sessions.TryAdd(sessionId, session))
         {
-            error = "Session already exists";
-            return false;
+            return (false, "Session already exists");
         }
 
-        NotifyStatusChanged(session);
+        await NotifyStatusChangedAsync(session);
         _ = SpawnProcessAsync(session);
-        return true;
+        return (true, null);
     }
 
-    public bool TryStopSession(Guid sessionId)
+    public async Task<bool> TryStopSessionAsync(Guid sessionId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session))
             return false;
@@ -72,7 +72,7 @@ public sealed class SessionManager(
             return false;
 
         session.State = SessionState.Stopping;
-        NotifyStatusChanged(session);
+        await NotifyStatusChangedAsync(session);
 
         try
         {
@@ -133,7 +133,8 @@ public sealed class SessionManager(
             }
             else
             {
-                // Process is gone — report as crashed
+                // Process is gone — dispose the Process handle and report as crashed
+                process?.Dispose();
                 logger.LogInformation(
                     "Session {SessionId} (PID {Pid}) is no longer running, reporting as crashed",
                     serverSession.SessionId, serverSession.Pid);
@@ -170,12 +171,20 @@ public sealed class SessionManager(
         {
             if (session.State is SessionState.Starting or SessionState.Running)
             {
-                TryStopSession(id);
+                session.State = SessionState.Stopping;
+                try
+                {
+                    session.Process?.Kill(entireProcessTree: true);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to kill process for session {SessionId}", id);
+                }
             }
         }
     }
 
-    public void HealthCheck()
+    public async Task HealthCheckAsync()
     {
         foreach (var session in _sessions.Values)
         {
@@ -194,7 +203,7 @@ public sealed class SessionManager(
                 // Process no longer exists
                 session.State = SessionState.Crashed;
                 session.EndedAt = DateTime.UtcNow;
-                NotifyStatusChanged(session);
+                await NotifyStatusChangedAsync(session);
             }
         }
 
@@ -205,7 +214,11 @@ public sealed class SessionManager(
             if (session.State is SessionState.Stopped or SessionState.Crashed &&
                 session.EndedAt < cutoff)
             {
-                _sessions.TryRemove(id, out _);
+                if (_sessions.TryRemove(id, out var removed))
+                {
+                    removed.Process?.Dispose();
+                    _lastStderrNotification.TryRemove(id, out _);
+                }
             }
         }
     }
@@ -335,7 +348,7 @@ public sealed class SessionManager(
                 session.State = SessionState.Crashed;
                 session.EndedAt = DateTime.UtcNow;
                 session.ErrorMessage = authError;
-                NotifyStatusChanged(session);
+                await NotifyStatusChangedAsync(session);
                 return;
             }
 
@@ -377,14 +390,14 @@ public sealed class SessionManager(
 
                         logger.LogWarning("Session {SessionId} stderr: {Line}", session.SessionId, line);
 
-                        // Report first stderr as error immediately (while process is still running)
+                        // Report stderr as error (while process is still running), throttled to avoid memory leak
                         if (session.State is SessionState.Running or SessionState.Starting)
                         {
                             if (line.Contains("Workspace not trusted"))
                                 session.ErrorMessage = $"Workspace not trusted. Run 'claude' once in {session.Path} on the agent machine to accept the trust dialog, then try again.";
                             else
                                 session.ErrorMessage = string.Join('\n', stderrLines).Trim();
-                            NotifyStatusChanged(session);
+                            await NotifyStderrStatusChangedAsync(session);
                         }
                     }
                 }
@@ -415,7 +428,7 @@ public sealed class SessionManager(
             if (!process.HasExited)
             {
                 session.State = SessionState.Running;
-                NotifyStatusChanged(session);
+                await NotifyStatusChangedAsync(session);
             }
 
             // Check for early exit — if the process dies within a few seconds, it likely failed to authenticate
@@ -455,7 +468,7 @@ public sealed class SessionManager(
                 : SessionState.Crashed;
             session.EndedAt = DateTime.UtcNow;
             session.ExitCode = process.ExitCode;
-            NotifyStatusChanged(session);
+            await NotifyStatusChangedAsync(session);
             process.Dispose();
         }
         catch (Exception ex)
@@ -466,7 +479,7 @@ public sealed class SessionManager(
             session.ErrorMessage = ex.Message.Contains("No such file or directory")
                 ? $"{ex.Message} Set ClaudeBinary in ~/.claudenest/config.json to the full path (e.g. /Users/you/.local/bin/claude)."
                 : ex.Message;
-            NotifyStatusChanged(session);
+            await NotifyStatusChangedAsync(session);
         }
     }
 
@@ -485,21 +498,48 @@ public sealed class SessionManager(
                 : SessionState.Crashed;
             session.EndedAt = DateTime.UtcNow;
             session.ExitCode = session.Process.ExitCode;
-            NotifyStatusChanged(session);
+            session.Process.Dispose();
+            await NotifyStatusChangedAsync(session);
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Error monitoring adopted session {SessionId}", session.SessionId);
             session.State = SessionState.Crashed;
             session.EndedAt = DateTime.UtcNow;
-            NotifyStatusChanged(session);
+            session.Process?.Dispose();
+            await NotifyStatusChangedAsync(session);
         }
     }
 
-    private void NotifyStatusChanged(ManagedSession session)
+    private async Task NotifyStatusChangedAsync(ManagedSession session)
     {
         var update = ToStatusUpdate(session);
-        OnSessionStatusChanged?.Invoke(update);
+        if (OnSessionStatusChanged is not null)
+        {
+            try
+            {
+                await OnSessionStatusChanged(update);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to notify status change for session {SessionId}", session.SessionId);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Throttled notification for stderr-triggered updates. Sends at most once per <see cref="StderrNotificationThrottle"/>
+    /// to prevent flooding SignalR with unawaited sends that cause memory growth.
+    /// </summary>
+    private async Task NotifyStderrStatusChangedAsync(ManagedSession session)
+    {
+        var now = DateTime.UtcNow;
+        var lastNotification = _lastStderrNotification.GetOrAdd(session.SessionId, DateTime.MinValue);
+        if (now - lastNotification < StderrNotificationThrottle)
+            return;
+
+        _lastStderrNotification[session.SessionId] = now;
+        await NotifyStatusChangedAsync(session);
     }
 
     private SessionStatusUpdate ToStatusUpdate(ManagedSession session)
