@@ -14,7 +14,7 @@ public sealed class SessionManager(
 {
     private readonly ConcurrentDictionary<Guid, ManagedSession> _sessions = new();
 
-    // Throttle stderr-triggered notifications to avoid flooding SignalR with fire-and-forget sends.
+    // Throttle stderr-triggered notifications to reduce high-frequency SignalR message volume.
     // Key: sessionId, Value: last notification time
     private readonly ConcurrentDictionary<Guid, DateTime> _lastStderrNotification = new();
     private static readonly TimeSpan StderrNotificationThrottle = TimeSpan.FromSeconds(3);
@@ -390,7 +390,8 @@ public sealed class SessionManager(
 
                         logger.LogWarning("Session {SessionId} stderr: {Line}", session.SessionId, line);
 
-                        // Report stderr as error (while process is still running), throttled to avoid memory leak
+                        // Report stderr as error (while process is still running).
+                        // Awaiting prevents task accumulation; throttling reduces update volume.
                         if (session.State is SessionState.Running or SessionState.Starting)
                         {
                             if (line.Contains("Workspace not trusted"))
@@ -529,7 +530,7 @@ public sealed class SessionManager(
 
     /// <summary>
     /// Throttled notification for stderr-triggered updates. Sends at most once per <see cref="StderrNotificationThrottle"/>
-    /// to prevent flooding SignalR with unawaited sends that cause memory growth.
+    /// to reduce high-frequency SignalR message volume from rapid stderr output.
     /// </summary>
     private async Task NotifyStderrStatusChangedAsync(ManagedSession session)
     {
