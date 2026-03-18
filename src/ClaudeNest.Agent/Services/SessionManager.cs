@@ -225,9 +225,9 @@ public sealed class SessionManager(
 
     /// <summary>
     /// Creates a ProcessStartInfo that runs the command through a login shell on Unix,
-    /// ensuring the user's shell profile (.zshrc, .bashrc, .profile) is sourced.
-    /// This gives spawned processes the full user environment (PATH, etc.) instead of
-    /// the minimal environment that launchd/systemd provides to services.
+    /// ensuring the user's login profile is sourced (e.g. ~/.zprofile for zsh, ~/.bash_profile
+    /// or ~/.profile for bash). This gives spawned processes the full user environment (PATH,
+    /// etc.) instead of the minimal environment that launchd/systemd provides to services.
     /// On Windows, the command is run directly since services inherit the user's environment.
     /// </summary>
     private static ProcessStartInfo CreateLoginShellStartInfo(string command, string arguments, string workingDirectory)
@@ -248,19 +248,26 @@ public sealed class SessionManager(
 
         var shell = Environment.GetEnvironmentVariable("SHELL");
         if (string.IsNullOrEmpty(shell) || !File.Exists(shell))
-            shell = File.Exists("/bin/zsh") ? "/bin/zsh" : "/bin/bash";
+        {
+            shell = File.Exists("/bin/zsh") ? "/bin/zsh"
+                : File.Exists("/bin/bash") ? "/bin/bash"
+                : "/bin/sh";
+        }
 
-        var escapedCommand = $"{command} {arguments}".Replace("'", "'\\''");
-        return new ProcessStartInfo
+        var fullCommand = $"{command} {arguments}";
+        var startInfo = new ProcessStartInfo
         {
             FileName = shell,
-            Arguments = $"-l -c '{escapedCommand}'",
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        startInfo.ArgumentList.Add("-l");
+        startInfo.ArgumentList.Add("-c");
+        startInfo.ArgumentList.Add(fullCommand);
+        return startInfo;
     }
 
     private string ResolveBinaryPath(string binary)
