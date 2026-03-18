@@ -223,27 +223,76 @@ public sealed class SessionManager(
         }
     }
 
+    /// <summary>
+    /// Creates a ProcessStartInfo that runs the command through a login shell on Unix,
+    /// ensuring the user's shell profile (.zshrc, .bashrc, .profile) is sourced.
+    /// This gives spawned processes the full user environment (PATH, etc.) instead of
+    /// the minimal environment that launchd/systemd provides to services.
+    /// On Windows, the command is run directly since services inherit the user's environment.
+    /// </summary>
+    private static ProcessStartInfo CreateLoginShellStartInfo(string command, string arguments, string workingDirectory)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return new ProcessStartInfo
+            {
+                FileName = command,
+                Arguments = arguments,
+                WorkingDirectory = workingDirectory,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+        }
+
+        var shell = Environment.GetEnvironmentVariable("SHELL");
+        if (string.IsNullOrEmpty(shell) || !File.Exists(shell))
+            shell = File.Exists("/bin/zsh") ? "/bin/zsh" : "/bin/bash";
+
+        var escapedCommand = $"{command} {arguments}".Replace("'", "'\\''");
+        return new ProcessStartInfo
+        {
+            FileName = shell,
+            Arguments = $"-l -c '{escapedCommand}'",
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+    }
+
     private string ResolveBinaryPath(string binary)
     {
         // If already an absolute path, use it directly
         if (Path.IsPathRooted(binary))
             return binary;
 
-        // Try to find it via 'which' (Unix) or 'where' (Windows)
+        // Try to find it via the user's login shell so we pick up their full PATH
         try
         {
             var isWindows = OperatingSystem.IsWindows();
-            using var whichProcess = new Process
+            ProcessStartInfo whichStartInfo;
+            if (isWindows)
             {
-                StartInfo = new ProcessStartInfo
+                whichStartInfo = new ProcessStartInfo
                 {
-                    FileName = isWindows ? "where" : "which",
+                    FileName = "where",
                     Arguments = binary,
                     RedirectStandardOutput = true,
+                    RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
-                }
-            };
+                };
+            }
+            else
+            {
+                whichStartInfo = CreateLoginShellStartInfo("which", binary,
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+            }
+
+            using var whichProcess = new Process { StartInfo = whichStartInfo };
             whichProcess.Start();
             var result = whichProcess.StandardOutput.ReadLine()?.Trim();
             whichProcess.WaitForExit(5000);
