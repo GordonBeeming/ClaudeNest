@@ -288,16 +288,7 @@ public sealed class SessionManager(
         {
             using var process = new Process
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = claudeBinary,
-                    Arguments = "auth status",
-                    WorkingDirectory = workingDirectory,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
+                StartInfo = CreateLoginShellStartInfo(claudeBinary, "auth status", workingDirectory)
             };
 
             process.Start();
@@ -358,16 +349,7 @@ public sealed class SessionManager(
 
             var process = new Process
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = claudeBinary,
-                    Arguments = arguments,
-                    WorkingDirectory = session.Path,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
+                StartInfo = CreateLoginShellStartInfo(claudeBinary, arguments, session.Path)
             };
 
             process.Start();
