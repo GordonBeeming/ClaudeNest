@@ -118,6 +118,11 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
                         await OnReconnected(_connection.ConnectionId);
                     break;
                 }
+                catch (OperationCanceledException) when (_stoppingToken.IsCancellationRequested)
+                {
+                    _logger.LogInformation("Reconnection cancelled — agent is shutting down");
+                    break;
+                }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "Manual reconnection failed, retrying in {Delay}s...", delay.TotalSeconds);

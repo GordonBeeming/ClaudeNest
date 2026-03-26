@@ -200,11 +200,12 @@ public sealed class SessionManager(
             }
             catch
             {
-                // Process no longer exists — dispose handle immediately to free native resources
+                // Process no longer exists — mark session as crashed and clear process reference.
+                // Don't dispose Process here as SpawnProcessAsync/MonitorAdoptedProcessAsync may
+                // still be awaiting WaitForExitAsync() on the same instance. Let the owning code
+                // path handle disposal; the 1-hour cleanup will catch any stragglers.
                 session.State = SessionState.Crashed;
                 session.EndedAt = DateTime.UtcNow;
-                session.Process?.Dispose();
-                session.Process = null;
                 await NotifyStatusChangedAsync(session);
             }
         }
