@@ -60,7 +60,7 @@ public class AgentWorker(
                     Version = typeof(AgentWorker).Assembly.GetName().Version?.ToString() ?? "0.0.0",
                     Architecture = RuntimeInformation.ProcessArchitecture.ToString(),
                     AllowedPaths = config.AllowedPaths
-                });
+                }, stoppingToken);
                 logger.LogInformation("Agent re-registered after reconnection");
 
                 // Report current sessions on reconnect
@@ -68,7 +68,7 @@ public class AgentWorker(
                 {
                     var currentSessions = _sessionManager.GetAllSessions();
                     if (currentSessions.Count > 0)
-                        await _connectionManager.ReportAllSessionsAsync(credentials.AgentId, currentSessions);
+                        await _connectionManager.ReportAllSessionsAsync(credentials.AgentId, currentSessions, stoppingToken);
                 }
             }
             catch (Exception ex)
@@ -82,7 +82,7 @@ public class AgentWorker(
         {
             try
             {
-                await _connectionManager.SendSessionStatusAsync(update);
+                await _connectionManager.SendSessionStatusAsync(update, stoppingToken);
             }
             catch (Exception ex)
             {
@@ -99,7 +99,7 @@ public class AgentWorker(
                 RequestId = requestId,
                 Path = path,
                 Directories = directories
-            });
+            }, stoppingToken);
         };
 
         _connectionManager.OnStartSession += async (sessionId, path, permissionMode) =>
@@ -117,7 +117,7 @@ public class AgentWorker(
                     State = SessionState.Crashed,
                     StartedAt = DateTime.UtcNow,
                     EndedAt = DateTime.UtcNow
-                });
+                }, stoppingToken);
             }
         };
 
@@ -129,7 +129,7 @@ public class AgentWorker(
         _connectionManager.OnGetSessions += async () =>
         {
             var sessions = _sessionManager.GetAllSessions();
-            await _connectionManager.ReportAllSessionsAsync(credentials.AgentId, sessions);
+            await _connectionManager.ReportAllSessionsAsync(credentials.AgentId, sessions, stoppingToken);
         };
 
         _connectionManager.OnDeregister += () =>
@@ -181,7 +181,7 @@ public class AgentWorker(
                 Version = typeof(AgentWorker).Assembly.GetName().Version?.ToString() ?? "0.0.0",
                 Architecture = RuntimeInformation.ProcessArchitecture.ToString(),
                 AllowedPaths = config.AllowedPaths
-            });
+            }, stoppingToken);
         }
         catch (Exception ex)
         {
@@ -208,7 +208,7 @@ public class AgentWorker(
                     AgentId = credentials.AgentId,
                     Status = "completed",
                     NewVersion = currentVersion
-                });
+                }, stoppingToken);
             }
             catch (Exception ex)
             {
@@ -244,7 +244,7 @@ public class AgentWorker(
             {
                 try
                 {
-                    await _connectionManager.SendSessionStatusAsync(update);
+                    await _connectionManager.SendSessionStatusAsync(update, stoppingToken);
                 }
                 catch (Exception ex)
                 {
@@ -257,7 +257,7 @@ public class AgentWorker(
         var currentSessions = _sessionManager.GetAllSessions();
         if (currentSessions.Count > 0)
         {
-            await _connectionManager.ReportAllSessionsAsync(credentials.AgentId, currentSessions);
+            await _connectionManager.ReportAllSessionsAsync(credentials.AgentId, currentSessions, stoppingToken);
         }
 
         logger.LogInformation("Agent registered and connected. Waiting for commands...");
@@ -270,7 +270,7 @@ public class AgentWorker(
             {
                 await heartbeatTimer.WaitForNextTickAsync(stoppingToken);
                 await _sessionManager.HealthCheckAsync();
-                await _connectionManager.SendHeartbeatAsync();
+                await _connectionManager.SendHeartbeatAsync(stoppingToken);
 
                 // Check if a deferred update can now be applied
                 await TryApplyPendingUpdateAsync(stoppingToken);
@@ -297,7 +297,7 @@ public class AgentWorker(
                 AgentId = agentId,
                 Status = "downloading",
                 NewVersion = notification.LatestVersion
-            });
+            }, ct);
 
             // Download the binary first
             var binaryPath = await _updater.DownloadAsync(
@@ -321,7 +321,7 @@ public class AgentWorker(
                     AgentId = agentId,
                     Status = "waiting_for_sessions",
                     NewVersion = notification.LatestVersion
-                });
+                }, ct);
                 return;
             }
 
@@ -331,7 +331,7 @@ public class AgentWorker(
                 AgentId = agentId,
                 Status = "restarting",
                 NewVersion = notification.LatestVersion
-            });
+            }, ct);
 
             await _updater.ApplyAsync(
                 binaryPath,
@@ -350,7 +350,7 @@ public class AgentWorker(
                     Status = "failed",
                     Error = ex.Message,
                     NewVersion = notification.LatestVersion
-                });
+                }, ct);
             }
             catch
             {
@@ -386,7 +386,7 @@ public class AgentWorker(
                 AgentId = agentId,
                 Status = "restarting",
                 NewVersion = notification.LatestVersion
-            });
+            }, ct);
 
             await _updater.ApplyAsync(
                 binaryPath,
@@ -405,7 +405,7 @@ public class AgentWorker(
                     Status = "failed",
                     Error = ex.Message,
                     NewVersion = notification.LatestVersion
-                });
+                }, ct);
             }
             catch
             {
