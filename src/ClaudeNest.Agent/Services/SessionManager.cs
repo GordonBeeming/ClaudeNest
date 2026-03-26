@@ -200,9 +200,11 @@ public sealed class SessionManager(
             }
             catch
             {
-                // Process no longer exists
+                // Process no longer exists — dispose handle immediately to free native resources
                 session.State = SessionState.Crashed;
                 session.EndedAt = DateTime.UtcNow;
+                session.Process?.Dispose();
+                session.Process = null;
                 await NotifyStatusChangedAsync(session);
             }
         }

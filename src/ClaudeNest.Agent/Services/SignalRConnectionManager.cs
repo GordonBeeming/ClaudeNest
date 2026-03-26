@@ -15,6 +15,7 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
     private HubConnection? _connection;
     private readonly AgentCredentials _credentials;
     private readonly ILogger<SignalRConnectionManager> _logger;
+    private CancellationToken _stoppingToken;
 
     public event Func<string, string, Task>? OnListDirectories;
     public event Func<Guid, string, string, Task>? OnStartSession;
@@ -31,8 +32,9 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
         _logger = logger;
     }
 
-    public async Task ConnectAsync(CancellationToken cancellationToken)
+    public async Task ConnectAsync(CancellationToken stoppingToken)
     {
+        _stoppingToken = stoppingToken;
         var hubUrl = $"{_credentials.BackendUrl.TrimEnd('/')}/hubs/nest";
 
         var jsonOptions = new JsonSerializerOptions
@@ -105,12 +107,12 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
             _logger.LogWarning(error, "SignalR connection closed. Starting manual reconnection...");
             var delay = TimeSpan.FromSeconds(5);
             var maxDelay = TimeSpan.FromMinutes(5);
-            while (true)
+            while (!_stoppingToken.IsCancellationRequested)
             {
                 try
                 {
-                    await Task.Delay(delay);
-                    await _connection.StartAsync();
+                    await Task.Delay(delay, _stoppingToken);
+                    await _connection.StartAsync(_stoppingToken);
                     _logger.LogInformation("Manual reconnection successful");
                     if (OnReconnected is not null)
                         await OnReconnected(_connection.ConnectionId);
@@ -124,45 +126,45 @@ public sealed class SignalRConnectionManager : IAsyncDisposable
             }
         };
 
-        await _connection.StartAsync(cancellationToken);
+        await _connection.StartAsync(stoppingToken);
         _logger.LogInformation("Connected to SignalR hub at {Url}", hubUrl);
     }
 
-    public async Task<AgentRegistrationResult?> RegisterAgentAsync(AgentInfo agentInfo)
+    public async Task<AgentRegistrationResult?> RegisterAgentAsync(AgentInfo agentInfo, CancellationToken ct = default)
     {
         if (_connection is not null)
-            return await _connection.InvokeAsync<AgentRegistrationResult>("RegisterAgent", agentInfo);
+            return await _connection.InvokeAsync<AgentRegistrationResult>("RegisterAgent", agentInfo, ct);
         return null;
     }
 
-    public async Task SendSessionStatusAsync(SessionStatusUpdate update)
+    public async Task SendSessionStatusAsync(SessionStatusUpdate update, CancellationToken ct = default)
     {
         if (_connection is not null)
-            await _connection.InvokeAsync("SessionStatusChanged", update);
+            await _connection.SendAsync("SessionStatusChanged", update, ct);
     }
 
-    public async Task SendDirectoryListingAsync(DirectoryListingResponse response)
+    public async Task SendDirectoryListingAsync(DirectoryListingResponse response, CancellationToken ct = default)
     {
         if (_connection is not null)
-            await _connection.InvokeAsync("DirectoryListing", response);
+            await _connection.SendAsync("DirectoryListing", response, ct);
     }
 
-    public async Task ReportAllSessionsAsync(Guid agentId, List<SessionStatusUpdate> sessions)
+    public async Task ReportAllSessionsAsync(Guid agentId, List<SessionStatusUpdate> sessions, CancellationToken ct = default)
     {
         if (_connection is not null)
-            await _connection.InvokeAsync("ReportAllSessions", agentId, sessions);
+            await _connection.SendAsync("ReportAllSessions", agentId, sessions, ct);
     }
 
-    public async Task SendHeartbeatAsync()
+    public async Task SendHeartbeatAsync(CancellationToken ct = default)
     {
         if (_connection is not null)
-            await _connection.InvokeAsync("Heartbeat");
+            await _connection.SendAsync("Heartbeat", ct);
     }
 
-    public async Task SendUpdateStatusAsync(UpdateStatusReport report)
+    public async Task SendUpdateStatusAsync(UpdateStatusReport report, CancellationToken ct = default)
     {
         if (_connection is not null)
-            await _connection.InvokeAsync("UpdateStatus", report);
+            await _connection.SendAsync("UpdateStatus", report, ct);
     }
 
     public async ValueTask DisposeAsync()
